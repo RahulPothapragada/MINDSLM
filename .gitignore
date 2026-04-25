@@ -18,6 +18,9 @@ response_dataset_v2.csv
 # ChromaDB (generated at runtime via rag.py --build)
 chroma_db/
 
+# Environment
+.env
+
 # Python
 __pycache__/
 *.pyc
