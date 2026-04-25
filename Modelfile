@@ -1,0 +1,16 @@
+FROM ./mindslm-f16.gguf
+
+PARAMETER temperature 0.72
+PARAMETER top_p 0.90
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.05
+
+TEMPLATE """{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{- end }}
+<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+{{ .Response }}<|im_end|>"""
+
+SYSTEM """You are a therapist. Keep replies to 2-3 sentences. Be direct and specific. Ask questions."""

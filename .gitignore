@@ -1,0 +1,33 @@
+# Large model files
+*.gguf
+*.safetensors
+*.bin
+mindslm-merged/
+output/
+llama.cpp/
+
+# Datasets and training data
+train.csv
+train_chat.jsonl
+val_chat.jsonl
+response_dataset_v2.csv
+
+# Database (user data)
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Node
+frontend/node_modules/
+frontend-react/node_modules/
+node_modules/
+
+# OS
+.DS_Store
