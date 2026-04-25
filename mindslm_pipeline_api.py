@@ -15,6 +15,8 @@ import os
 import json
 import time
 import requests
+from dotenv import load_dotenv
+load_dotenv()
 import joblib
 import numpy as np
 from flask import Flask, request, jsonify
