@@ -1,165 +1,223 @@
 """
 ==========================================================================
-STEP 3: Fine-Tune Qwen2.5-1.5B-Instruct for Mental Health Responses
+STEP 3: Fine-Tune Qwen2.5-14B-Instruct for Mental Health Responses
 ==========================================================================
 🏷️  Model Name: MindSLM
-📊  Base Model: Qwen/Qwen2.5-1.5B-Instruct
+📊  Base Model: Qwen/Qwen2.5-14B-Instruct
 🔧  Method: QLoRA (4-bit quantization + LoRA adapters)
-🖥️  Hardware: Kaggle T4 GPU (16GB VRAM)
-⏱️  Training Time: ~2-4 hours
+🖥️  Hardware: Kaggle T4 x2 (30GB VRAM total)
+📦  Data: Counsel Chat (real therapist Q&As) — downloaded directly from HuggingFace
+⏱️  Training Time: ~3-5 hours
 
 HOW TO USE ON KAGGLE:
 1. Create a new Kaggle Notebook
 2. Enable GPU: Settings → Accelerator → GPU T4 x2
-3. Upload train_chat.jsonl and val_chat.jsonl as dataset
-4. Copy this entire file into a notebook cell (or split into cells)
-5. Run!
+3. Enable Internet: Settings → Internet → On
+4. Paste this entire file into the notebook (split at CELL markers)
+5. Run all cells in order
 
-Output: Fine-tuned model saved to ./mindslm-finetuned/
+Output: Merged model saved to /kaggle/working/mindslm-14b-merged/
+        Then zip and download for GGUF conversion
 ==========================================================================
 """
 
 # ════════════════════════════════════════════════════════
 # CELL 1: Install Dependencies
 # ════════════════════════════════════════════════════════
-# !pip install -q torch transformers accelerate peft bitsandbytes trl datasets wandb
+import subprocess
+subprocess.run([
+    "pip", "install", "-q",
+    "torch", "transformers", "accelerate", "peft",
+    "bitsandbytes", "trl", "datasets"
+])
 
 import os
-os.environ["WANDB_DISABLED"] = "true"  # Disable wandb logging
+os.environ["WANDB_DISABLED"] = "true"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # ════════════════════════════════════════════════════════
-# CELL 2: Imports
+# CELL 2: Imports + GPU Check
 # ════════════════════════════════════════════════════════
 import torch
 import json
-from datasets import Dataset
+import gc
+from datasets import Dataset, load_dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     BitsAndBytesConfig,
-    TrainingArguments,
 )
 from peft import (
     LoraConfig,
     get_peft_model,
     prepare_model_for_kbit_training,
+    PeftModel,
     TaskType,
 )
 from trl import SFTTrainer, SFTConfig
 
-print(f"PyTorch version: {torch.__version__}")
+print(f"PyTorch: {torch.__version__}")
 print(f"CUDA available: {torch.cuda.is_available()}")
-if torch.cuda.is_available():
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
-    print(f"VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB")
+for i in range(torch.cuda.device_count()):
+    props = torch.cuda.get_device_properties(i)
+    print(f"GPU {i}: {props.name} — {props.total_memory / 1024**3:.1f} GB VRAM")
 
 # ════════════════════════════════════════════════════════
 # CELL 3: Configuration
 # ════════════════════════════════════════════════════════
-# ── Model Config ──
-BASE_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
-OUTPUT_DIR = "./mindslm-finetuned"
-MERGED_DIR = "./mindslm-merged"       # Full merged model for export
+BASE_MODEL  = "Qwen/Qwen2.5-14B-Instruct"
+OUTPUT_DIR  = "/kaggle/working/mindslm-14b-lora"
+MERGED_DIR  = "/kaggle/working/mindslm-14b-merged"
 
-# ── QLoRA Config ──
-LORA_R = 16              # LoRA rank — smaller dataset (1.2K) so lower rank avoids overfitting
-LORA_ALPHA = 32           # LoRA scaling factor (usually 2x rank)
-LORA_DROPOUT = 0.05       # Dropout for regularization
-LORA_TARGET_MODULES = [   # Which layers to fine-tune
-    "q_proj", "k_proj", "v_proj", "o_proj",  # Attention layers
-    "gate_proj", "up_proj", "down_proj",      # MLP layers
+# QLoRA — conservative settings for T4x2 with 14B
+LORA_R          = 8       # Lower rank = less VRAM
+LORA_ALPHA      = 16
+LORA_DROPOUT    = 0.05
+LORA_TARGET_MODULES = [
+    "q_proj", "k_proj", "v_proj", "o_proj",
+    "gate_proj", "up_proj", "down_proj",
 ]
 
-# ── Training Config ──
-NUM_EPOCHS = 3
-BATCH_SIZE = 4
-GRADIENT_ACCUMULATION = 4  # Effective batch = 4 * 4 = 16
-LEARNING_RATE = 2e-4
-MAX_SEQ_LENGTH = 512       # Max tokens per sample
-WARMUP_RATIO = 0.05
-WEIGHT_DECAY = 0.01
-LR_SCHEDULER = "cosine"
+# Training — small batch to fit in 30GB total VRAM
+NUM_EPOCHS            = 3
+BATCH_SIZE            = 1    # Must be 1 for 14B on T4
+GRADIENT_ACCUMULATION = 16   # Effective batch = 16
+LEARNING_RATE         = 1e-4 # Lower LR for larger model
+MAX_SEQ_LENGTH        = 512
+WEIGHT_DECAY          = 0.01
+LR_SCHEDULER          = "cosine"
+WARMUP_STEPS          = 30
 
-# ── Data Paths ──
-# Update these based on your Kaggle dataset path
-TRAIN_FILE = "/kaggle/input/mindslm-training-data/train_chat.jsonl"
-VAL_FILE   = "/kaggle/input/mindslm-training-data/val_chat.jsonl"
+# Routing category for system prompt selection
+SYSTEM_PROMPTS = {
+    "Depression": (
+        "You are a therapist. Name the specific thing the user described, "
+        "then suggest one small concrete action they can do right now. "
+        "2 sentences max. Do not use generic phrases."
+    ),
+    "Anxiety": (
+        "You are a therapist. Name the specific symptom the user described, "
+        "then give one concrete grounding technique. "
+        "2 sentences max. Do not use generic phrases."
+    ),
+    "Suicidal": (
+        "You are a crisis counselor. Acknowledge what the user is carrying, "
+        "then direct them to call or text 988. 2 sentences max."
+    ),
+    "Normal": (
+        "You are a supportive friend. Reply in 1 sentence and ask 1 follow-up question."
+    ),
+}
 
 # ════════════════════════════════════════════════════════
-# CELL 4: Load Dataset
+# CELL 4: Load + Format Counsel Chat Data
 # ════════════════════════════════════════════════════════
-def load_jsonl(filepath):
-    """Load JSONL chat format data."""
-    data = []
-    with open(filepath, 'r') as f:
-        for line in f:
-            data.append(json.loads(line.strip()))
-    return data
+print("\nDownloading Counsel Chat from HuggingFace...")
+raw = load_dataset("nbertagnolli/counsel-chat", split="train")
+print(f"Loaded {len(raw)} rows")
 
-print("Loading datasets...")
-train_data = load_jsonl(TRAIN_FILE)
-val_data = load_jsonl(VAL_FILE)
+TOPIC_TO_CATEGORY = {
+    "depression": "Depression", "grief": "Depression", "loss": "Depression",
+    "loneliness": "Depression", "self-esteem": "Depression", "trauma": "Depression",
+    "anxiety": "Anxiety", "stress": "Anxiety", "panic": "Anxiety",
+    "ptsd": "Anxiety", "anger": "Anxiety", "relationships": "Normal",
+    "sleep": "Depression", "family": "Normal", "workplace": "Normal",
+}
+
+def format_row(row):
+    question = str(row.get("questionText", "") or "").strip()
+    answer   = str(row.get("answerText", "") or "").strip()
+    topic    = str(row.get("topic", "") or "").lower()
+
+    if not question or not answer or len(answer) < 40:
+        return None
+
+    # Map topic → category
+    category = "Normal"
+    for t, cat in TOPIC_TO_CATEGORY.items():
+        if t in topic:
+            category = cat
+            break
+
+    # Truncate answer to 3 sentences
+    sentences = answer.replace("\n", " ").split(". ")
+    short_answer = ". ".join(sentences[:3]).strip()
+    if not short_answer.endswith("."):
+        short_answer += "."
+
+    return {
+        "messages": [
+            {"role": "system",    "content": SYSTEM_PROMPTS[category]},
+            {"role": "user",      "content": question},
+            {"role": "assistant", "content": short_answer},
+        ]
+    }
+
+print("Formatting data...")
+formatted = [format_row(row) for row in raw]
+formatted = [x for x in formatted if x is not None]
+print(f"Formatted {len(formatted)} valid samples")
+
+# Split 90/10 train/val
+split_idx   = int(len(formatted) * 0.9)
+train_data  = formatted[:split_idx]
+val_data    = formatted[split_idx:]
 
 train_dataset = Dataset.from_list(train_data)
-val_dataset = Dataset.from_list(val_data)
+val_dataset   = Dataset.from_list(val_data)
 
-print(f"✅ Train: {len(train_dataset)} samples")
-print(f"✅ Val:   {len(val_dataset)} samples")
+print(f"Train: {len(train_dataset)} | Val: {len(val_dataset)}")
 
-# Preview a sample
+# Preview
 sample = train_data[0]
-print(f"\nSample:")
-for msg in sample['messages']:
-    print(f"  [{msg['role']}]: {msg['content'][:80]}...")
+print("\nSample:")
+for msg in sample["messages"]:
+    print(f"  [{msg['role']}]: {msg['content'][:100]}...")
 
 # ════════════════════════════════════════════════════════
 # CELL 5: Load Tokenizer
 # ════════════════════════════════════════════════════════
 print(f"\nLoading tokenizer: {BASE_MODEL}")
-tokenizer = AutoTokenizer.from_pretrained(
-    BASE_MODEL,
-    trust_remote_code=True,
-)
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
 
-# Ensure pad token is set
 if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.pad_token     = tokenizer.eos_token
+    tokenizer.pad_token_id  = tokenizer.eos_token_id
 
-print(f"✅ Tokenizer loaded — Vocab size: {tokenizer.vocab_size}")
+print(f"Vocab size: {tokenizer.vocab_size}")
 
 # ════════════════════════════════════════════════════════
-# CELL 6: Load Model with 4-bit Quantization
+# CELL 6: Load 14B Model with 4-bit Quantization
 # ════════════════════════════════════════════════════════
-print(f"\nLoading model with 4-bit quantization: {BASE_MODEL}")
+print(f"\nLoading {BASE_MODEL} in 4-bit...")
+print("(This downloads ~28GB of weights — takes 10-15 minutes first time)")
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",           # Normal Float 4 — best for fine-tuning
-    bnb_4bit_compute_dtype=torch.float16, # Compute in fp16
-    bnb_4bit_use_double_quant=True,       # Double quantization saves more VRAM
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
 )
 
 model = AutoModelForCausalLM.from_pretrained(
     BASE_MODEL,
     quantization_config=bnb_config,
-    device_map="auto",
+    device_map="auto",          # Spreads across both T4 GPUs automatically
     trust_remote_code=True,
     torch_dtype=torch.float16,
 )
 
-# Prepare for k-bit training
 model = prepare_model_for_kbit_training(model)
 
-# Print model size
-total_params = sum(p.numel() for p in model.parameters())
-print(f"✅ Model loaded — Total parameters: {total_params / 1e9:.2f}B")
-print(f"   VRAM used: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+total = sum(p.numel() for p in model.parameters())
+print(f"Parameters: {total / 1e9:.1f}B")
+for i in range(torch.cuda.device_count()):
+    print(f"GPU {i} VRAM used: {torch.cuda.memory_allocated(i) / 1024**3:.2f} GB")
 
 # ════════════════════════════════════════════════════════
-# CELL 7: Apply LoRA Adapters
+# CELL 7: Apply LoRA
 # ════════════════════════════════════════════════════════
-print("\nApplying LoRA adapters...")
+print("\nApplying LoRA...")
 
 lora_config = LoraConfig(
     r=LORA_R,
@@ -172,18 +230,13 @@ lora_config = LoraConfig(
 
 model = get_peft_model(model, lora_config)
 
-# Print trainable parameters
-trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-total_params = sum(p.numel() for p in model.parameters())
-pct = 100 * trainable_params / total_params
-
-print(f"✅ LoRA applied:")
-print(f"   Trainable parameters: {trainable_params:,} ({pct:.2f}%)")
-print(f"   Total parameters:     {total_params:,}")
-print(f"   VRAM used: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+total     = sum(p.numel() for p in model.parameters())
+print(f"Trainable: {trainable:,} ({100*trainable/total:.2f}%)")
+print(f"Total:     {total:,}")
 
 # ════════════════════════════════════════════════════════
-# CELL 8: Configure Training
+# CELL 8: Training Config
 # ════════════════════════════════════════════════════════
 print("\nConfiguring training...")
 
@@ -195,43 +248,37 @@ training_args = SFTConfig(
     gradient_accumulation_steps=GRADIENT_ACCUMULATION,
     learning_rate=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY,
-    warmup_ratio=WARMUP_RATIO,
+    warmup_steps=WARMUP_STEPS,
     lr_scheduler_type=LR_SCHEDULER,
     max_seq_length=MAX_SEQ_LENGTH,
-    
-    # Evaluation
+
     eval_strategy="steps",
-    eval_steps=100,
-    
-    # Saving
+    eval_steps=50,
     save_strategy="steps",
-    save_steps=200,
-    save_total_limit=3,
+    save_steps=100,
+    save_total_limit=2,
     load_best_model_at_end=True,
     metric_for_best_model="eval_loss",
     greater_is_better=False,
-    
-    # Logging
-    logging_steps=25,
+
+    logging_steps=10,
     logging_first_step=True,
     report_to="none",
-    
-    # Optimization
+
     fp16=True,
     optim="paged_adamw_8bit",
     gradient_checkpointing=True,
     gradient_checkpointing_kwargs={"use_reentrant": False},
-    
-    # Misc
+
     seed=42,
-    dataloader_num_workers=2,
     remove_unused_columns=False,
+    dataloader_num_workers=0,  # 0 for stability on Kaggle
 )
 
 # ════════════════════════════════════════════════════════
-# CELL 9: Create Trainer and Start Training
+# CELL 9: Train
 # ════════════════════════════════════════════════════════
-print("\nInitializing trainer...")
+print("\nInitializing SFTTrainer...")
 
 trainer = SFTTrainer(
     model=model,
@@ -242,32 +289,28 @@ trainer = SFTTrainer(
 )
 
 print(f"\n{'='*60}")
-print(f"  🚀 STARTING TRAINING — MindSLM")
+print(f"  STARTING TRAINING — MindSLM 14B")
 print(f"{'='*60}")
-print(f"  Base model:     {BASE_MODEL}")
-print(f"  Method:         QLoRA (r={LORA_R}, alpha={LORA_ALPHA})")
-print(f"  Train samples:  {len(train_dataset)}")
-print(f"  Val samples:    {len(val_dataset)}")
-print(f"  Epochs:         {NUM_EPOCHS}")
+print(f"  Base model:      {BASE_MODEL}")
+print(f"  LoRA rank:       {LORA_R}  |  alpha: {LORA_ALPHA}")
+print(f"  Train samples:   {len(train_dataset)}")
+print(f"  Val samples:     {len(val_dataset)}")
+print(f"  Epochs:          {NUM_EPOCHS}")
 print(f"  Effective batch: {BATCH_SIZE * GRADIENT_ACCUMULATION}")
-print(f"  Learning rate:  {LEARNING_RATE}")
-print(f"  Max seq length: {MAX_SEQ_LENGTH}")
+print(f"  Learning rate:   {LEARNING_RATE}")
 print(f"{'='*60}\n")
 
-# TRAIN!
 train_result = trainer.train()
 
-# Print results
 print(f"\n{'='*60}")
-print(f"  ✅ TRAINING COMPLETE")
+print(f"  TRAINING COMPLETE")
 print(f"{'='*60}")
-print(f"  Training loss:    {train_result.training_loss:.4f}")
-print(f"  Training runtime: {train_result.metrics['train_runtime']:.0f}s")
-print(f"  Samples/second:   {train_result.metrics['train_samples_per_second']:.2f}")
+print(f"  Loss:       {train_result.training_loss:.4f}")
+print(f"  Runtime:    {train_result.metrics['train_runtime']:.0f}s")
+print(f"  Samples/s:  {train_result.metrics['train_samples_per_second']:.2f}")
 
-# Evaluate
 eval_result = trainer.evaluate()
-print(f"  Validation loss:  {eval_result['eval_loss']:.4f}")
+print(f"  Val loss:   {eval_result['eval_loss']:.4f}")
 
 # ════════════════════════════════════════════════════════
 # CELL 10: Save LoRA Adapter
@@ -275,15 +318,19 @@ print(f"  Validation loss:  {eval_result['eval_loss']:.4f}")
 print(f"\nSaving LoRA adapter to {OUTPUT_DIR}...")
 trainer.save_model(OUTPUT_DIR)
 tokenizer.save_pretrained(OUTPUT_DIR)
-print(f"✅ LoRA adapter saved!")
+print("LoRA adapter saved!")
 
 # ════════════════════════════════════════════════════════
-# CELL 11: Merge LoRA into Base Model (for export)
+# CELL 11: Merge LoRA into Base Model
 # ════════════════════════════════════════════════════════
-print(f"\nMerging LoRA weights into base model...")
+print("\nMerging LoRA into base model...")
+print("(Reloads base model in fp16 — takes ~10 minutes)")
 
-# Reload base model in full precision for merging
-from peft import PeftModel
+# Free training memory first
+del trainer
+del model
+gc.collect()
+torch.cuda.empty_cache()
 
 base_model = AutoModelForCausalLM.from_pretrained(
     BASE_MODEL,
@@ -292,66 +339,66 @@ base_model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True,
 )
 
-# Load and merge LoRA
-merged_model = PeftModel.from_pretrained(base_model, OUTPUT_DIR)
-merged_model = merged_model.merge_and_unload()
+merged = PeftModel.from_pretrained(base_model, OUTPUT_DIR)
+merged = merged.merge_and_unload()
 
-# Save merged model
-merged_model.save_pretrained(MERGED_DIR)
+os.makedirs(MERGED_DIR, exist_ok=True)
+merged.save_pretrained(MERGED_DIR, safe_serialization=True)
 tokenizer.save_pretrained(MERGED_DIR)
 
-print(f"✅ Merged model saved to {MERGED_DIR}")
-print(f"   This is your complete MindSLM model ready for GGUF conversion!")
+print(f"Merged model saved to {MERGED_DIR}")
 
 # ════════════════════════════════════════════════════════
-# CELL 12: Quick Test — Generate a Response
+# CELL 12: Quick Test
 # ════════════════════════════════════════════════════════
 print(f"\n{'='*60}")
-print(f"  🧪 TESTING MindSLM")
+print("  TESTING MindSLM 14B")
 print(f"{'='*60}")
 
-test_inputs = [
-    ("I can't sleep at night, my heart keeps racing and I feel so worried", "Anxiety"),
-    ("I've been crying for days and can't get out of bed", "Depression"),
-    ("I don't want to live anymore, everything is hopeless", "Suicidal"),
-    ("Had a great day today, finished my project!", "Normal"),
+test_cases = [
+    ("I keep waking up at night crying and I don't know why", "Depression"),
+    ("My heart races before every meeting and I can't breathe", "Anxiety"),
+    ("I don't see the point in anything anymore", "Depression"),
 ]
 
-# System prompts for testing
-test_prompts = {
-    "Anxiety": "You are MindSLM, a compassionate mental health support assistant. The user is experiencing anxiety. Acknowledge their feelings, suggest grounding techniques. Be warm and reassuring. 2-4 sentences.",
-    "Depression": "You are MindSLM, a compassionate mental health support assistant. The user is experiencing depression. Validate their pain, encourage small steps. 2-4 sentences.",
-    "Suicidal": "You are MindSLM, a compassionate crisis support assistant. The user is expressing suicidal thoughts. Express care, provide crisis resources (988 Lifeline). 2-4 sentences.",
-    "Normal": "You are MindSLM, a friendly conversational assistant. Respond naturally and warmly. 1-3 sentences.",
-}
-
-for user_text, status in test_inputs:
+for user_text, category in test_cases:
     messages = [
-        {"role": "system", "content": test_prompts[status]},
-        {"role": "user", "content": user_text},
+        {"role": "system",  "content": SYSTEM_PROMPTS[category]},
+        {"role": "user",    "content": user_text},
     ]
-    
     input_text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-    inputs = tokenizer(input_text, return_tensors="pt").to(merged_model.device)
-    
+    inputs = tokenizer(input_text, return_tensors="pt").to("cuda:0")
+
     with torch.no_grad():
-        outputs = merged_model.generate(
+        outputs = merged.generate(
             **inputs,
-            max_new_tokens=200,
+            max_new_tokens=100,
             temperature=0.7,
             top_p=0.9,
             do_sample=True,
             pad_token_id=tokenizer.pad_token_id,
         )
-    
-    response = tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
-    
-    print(f"\n  [{status}] User: \"{user_text[:60]}...\"")
-    print(f"  MindSLM: \"{response[:150]}\"")
 
-print(f"\n{'='*60}")
-print(f"  ✅ MindSLM is ready!")
-print(f"  Next: Run step4_export_ollama.py to create Ollama model")
-print(f"{'='*60}")
+    response = tokenizer.decode(
+        outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
+    )
+    print(f"\n  [{category}] {user_text[:60]}...")
+    print(f"  → {response[:200]}")
+
+# ════════════════════════════════════════════════════════
+# CELL 13: Zip for Download
+# ════════════════════════════════════════════════════════
+print(f"\nZipping merged model for download...")
+import subprocess
+
+result = subprocess.run(
+    ["zip", "-r", "/kaggle/working/mindslm-14b-merged.zip", MERGED_DIR],
+    capture_output=True, text=True
+)
+
+size_gb = os.path.getsize("/kaggle/working/mindslm-14b-merged.zip") / (1024**3)
+print(f"mindslm-14b-merged.zip created ({size_gb:.1f} GB)")
+print("\nDownload from Kaggle Output tab → mindslm-14b-merged.zip")
+print("Then run: python3 step4_export_ollama.py")
