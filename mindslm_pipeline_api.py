@@ -22,6 +22,8 @@ from flask_cors import CORS
 
 import database as db
 from screening import ScreeningEngine
+from rag import retrieve_examples
+from memory import store_message, retrieve_memories, format_memory_context
 
 app = Flask(__name__)
 CORS(app)
@@ -30,7 +32,7 @@ CORS(app)
 # CONFIGURATION
 # ==============================
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
-MODEL_NAME = os.getenv("MODEL_NAME", "mindslm")
+MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:14b")
 MODEL_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 API_PORT   = int(os.getenv("API_PORT", "8080"))
 
@@ -292,13 +294,31 @@ def _build_prefill(user_message: str, category: str, emotions: list) -> str:
         return f"The {symptom_text}"
 
 def generate_response(user_message: str, category: str, history: list,
-                      emotions: list, screening_prompt: str = "") -> str:
+                      emotions: list, screening_prompt: str = "",
+                      session_id: str = "default") -> str:
     system_prompt = SYSTEM_PROMPTS.get(category, SYSTEM_PROMPTS["Normal"])
 
     # Inject detected emotions into prompt
     if emotions:
         top = ", ".join(e["label"] for e in emotions[:3])
         system_prompt += f"\nDetected emotions: {top}."
+
+    # ── RAG: inject real therapist examples ──
+    rag_examples = retrieve_examples(user_message, category=category, n=3)
+    if rag_examples:
+        examples_text = "\n".join(f"- {ex}" for ex in rag_examples)
+        system_prompt += f"\n\nReal therapist responses for similar situations (match this tone and specificity):\n{examples_text}"
+
+    # ── Memory: inject relevant past user disclosures ──
+    memories = retrieve_memories(
+        user_id="default",
+        current_message=user_message,
+        exclude_session=session_id,
+        n=3
+    )
+    memory_context = format_memory_context(memories)
+    if memory_context:
+        system_prompt += memory_context
 
     # Inject screening instructions
     if screening_prompt:
@@ -316,12 +336,11 @@ def generate_response(user_message: str, category: str, history: list,
         "messages": messages,
         "stream": False,
         "options": {
-            "temperature": 0.65,
-            "top_p": 0.85,
+            "temperature": 0.7,
+            "top_p": 0.9,
             "top_k": 40,
-            "num_predict": 60,
-            "repeat_penalty": 1.2,
-            "presence_penalty": 0.6,
+            "num_predict": 120,
+            "repeat_penalty": 1.1,
         }
     }
 
@@ -483,9 +502,11 @@ def chat():
     history = [{"role": m["role"], "content": m["content"]} for m in messages]
 
     # ── Stage 3: Generate ──
-    response = generate_response(user_message, category, history, emotions, screening_prompt)
+    response = generate_response(user_message, category, history, emotions,
+                                 screening_prompt, session_id=session_id)
 
     # ── Persist ──
+    store_message(session_id, "default", user_message)  # store in memory for future sessions
     db.save_message(session_id, "user", user_message,
                     emotions={e["label"]: e["score"] for e in emotions},
                     classification=category, confidence=confidence)

@@ -15,6 +15,9 @@ response_dataset_v2.csv
 # Database (user data)
 *.db
 
+# ChromaDB (generated at runtime via rag.py --build)
+chroma_db/
+
 # Python
 __pycache__/
 *.pyc
