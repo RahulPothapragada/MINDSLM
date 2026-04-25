@@ -212,13 +212,7 @@ class ScreeningEngine:
 
         return f"""
 
-SCREENING MODE ({instrument_label}, question {answered + 1} of {total}):
-You are conducting a conversational screening. Naturally weave this question into your response:
-"{q_text}"
-
-Ask about this in a conversational way — NOT as a clinical question. For example instead of
-"Over the last two weeks, have you experienced trouble falling or staying asleep?"
-say something like "How has your sleep been lately? Are you getting enough rest?"
-
-Do NOT list all questions at once. Ask only this one. Wait for their answer before moving on.
-Do NOT mention PHQ-9 or GAD-7 by name. Keep it conversational."""
+SCREENING ({instrument_label}, {answered + 1}/{total}):
+Before ending your response, ask ONE natural follow-up question about: {q_text}
+Rephrase it in your own words as a therapist would — never quote it directly.
+Do not mention PHQ-9 or GAD-7. Ask only this one question."""
