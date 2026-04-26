@@ -1,0 +1,322 @@
+[
+  {
+    "query": "i feel so low today i dont know why",
+    "response": "That heaviness sitting on you right now is real, even without a reason. Put both feet flat on the floor and take one slow breath in.",
+    "category": "Depression"
+  },
+  {
+    "query": "i cant stop crying and i dont even know why",
+    "response": "Crying without knowing why is exhausting and disorienting. Place your hand on your chest right now and feel it rise and fall.",
+    "category": "Depression"
+  },
+  {
+    "query": "i keep waking up at night crying",
+    "response": "Waking up in the dark already in pain before the day even starts is one of the loneliest feelings. Feel the weight of your body in the bed right now.",
+    "category": "Depression"
+  },
+  {
+    "query": "everything feels pointless i dont see the point anymore",
+    "response": "That feeling where nothing seems worth doing or wanting is one of the heaviest things to carry. Tell me one thing that used to feel okay, even a little.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel completely empty inside",
+    "response": "That emptiness where you can't feel much of anything is its own kind of pain. Notice if your hands are warm or cold right now.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel hopeless like nothing will ever get better",
+    "response": "That hopelessness making everything look sealed shut is real and exhausting. Put your feet on the floor and press them down — you're still here.",
+    "category": "Depression"
+  },
+  {
+    "query": "i cant get out of bed i have no energy",
+    "response": "That heaviness keeping you in bed when you want to move is real. Just move one foot to the edge of the bed — that's the only step right now.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel numb i cant feel anything",
+    "response": "That numbness where emotions just don't reach you is a heavy place to be. Hold something cold in your hands right now and feel the temperature.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel worthless like i dont matter",
+    "response": "That feeling of worthlessness is one of the most painful things depression does. Look at your hands right now — they're still here, still real.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel stuck like nothing in my life is changing",
+    "response": "That stuck feeling like the walls aren't moving no matter what you do is draining. What's one tiny thing that felt even slightly different today?",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel like a burden to everyone around me",
+    "response": "Feeling like a burden is one of the most isolating things pain can tell you. You reached out right now — that matters.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel completely alone even when im around people",
+    "response": "That loneliness you feel even in a room full of people is one of the quietest kinds of pain. I'm here with you right now.",
+    "category": "Depression"
+  },
+  {
+    "query": "i lost interest in everything i used to enjoy",
+    "response": "That loss of things that used to matter is one of the quiet signs of something heavy. Can you tell me more about what today has been like?",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel like im just going through the motions",
+    "response": "That feeling of going through the day without really being in it is draining in a way that's hard to explain. Close your eyes for five seconds and just listen.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel really low and heavy today",
+    "response": "That low and heavy feeling you're carrying right now is real. Take a moment to notice your feet touching the ground.",
+    "category": "Depression"
+  },
+  {
+    "query": "i have been feeling really sad lately",
+    "response": "That sadness sitting with you is real and it deserves to be heard. Get a glass of cold water, hold it with both hands, and take three slow sips.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel down all the time i dont know what to do",
+    "response": "That low mood that won't lift no matter what you try is exhausting. Feel your feet on the floor right now — solid ground is still there.",
+    "category": "Depression"
+  },
+  {
+    "query": "i wake up and just dread the whole day",
+    "response": "Waking up already dreading what's ahead is exhausting before the day even starts. Put your feet flat on the floor and press them down.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel lost like i dont know who i am anymore",
+    "response": "That lost feeling like the ground shifted under you is real and disorienting. Notice your breath right now — slow and steady, you're still here.",
+    "category": "Depression"
+  },
+  {
+    "query": "i carry so much guilt i cant shake it",
+    "response": "That guilt following you around is exhausting to carry. Take one slow breath and let your shoulders drop away from your ears.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel ashamed of myself all the time",
+    "response": "Carrying shame like that is one of the heaviest things. You don't have to earn your right to feel better — you already deserve it.",
+    "category": "Depression"
+  },
+  {
+    "query": "i have no motivation to do anything",
+    "response": "That loss of motivation where even small tasks feel impossible is real. Pick one tiny thing — just one — and do only that.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel really tired all the time not just physically",
+    "response": "That exhaustion that goes deeper than sleep can fix is one of the hardest kinds to carry. Notice where in your body you're holding the most tension right now.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel dark all the time dark thoughts",
+    "response": "Those dark thoughts circling are real and I hear you. Tell me more — when did they start feeling this heavy?",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel so down nothing makes me happy",
+    "response": "That flatness where nothing lands or brings relief is real. Get up and get a glass of water right now — just that one small move.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel so anxious i cant breathe",
+    "response": "That tight chest and trouble breathing is your body in full alarm right now. Breathe out slowly for 6 counts — longer out than in — just once.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "my heart is racing i feel so anxious",
+    "response": "That racing heart making it hard to think is real. Put your feet flat on the floor and press down — ground yourself for just 10 seconds.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i cant stop worrying about everything",
+    "response": "That constant worry running in the background is exhausting to live with. Name three things you can physically see right now.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel so overwhelmed like everything is too much",
+    "response": "That overwhelm where everything is piling up at once is real. Pick just one thing and set everything else aside — just for right now.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel anxious before every meeting my heart races",
+    "response": "That dread building before something you can't avoid is one of the hardest kinds of anxiety. Take a slow breath out and feel your feet on the floor.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i cant relax i feel constantly on edge",
+    "response": "That constant on-edge feeling like you're waiting for something to go wrong is exhausting. Drop your shoulders away from your ears right now.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i keep having panic attacks out of nowhere",
+    "response": "That panic hitting out of nowhere and taking your breath is terrifying. You're safe right now — look around and name two things you can see.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i overthink everything i cant turn my brain off",
+    "response": "That mind that won't stop running through every scenario is exhausting. Touch something cold near you right now and focus only on the temperature.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel like something bad is going to happen",
+    "response": "That dread following you even when nothing is visibly wrong is real and tiring. Notice the weight of your body in your chair right now.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i have chest tightness and i feel so stressed",
+    "response": "That chest tightness holding the stress in your body is real. Take one breath in for 4 counts, hold for 2, out for 6.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i wake up anxious every morning",
+    "response": "Waking up already anxious before the day begins is draining before it even starts. Stretch your arms above your head for five seconds right now.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel so scared and i dont know why",
+    "response": "That fear sitting in you without a clear reason is real. Feel your feet on the floor and press them down — the ground is solid.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i cant stop thinking about worst case scenarios",
+    "response": "That spiral of worst-case thinking that won't let you rest is exhausting. Breathe out slowly and name one thing that is okay right now, just one.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel so stressed i cant cope",
+    "response": "That stress piling up to where it feels unmanageable is real. Take three slow breaths out — longer out than in — and then tell me what's heaviest right now.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel nervous all the time i cant calm down",
+    "response": "That nervousness humming through you all the time is exhausting to carry. Put one hand on your chest and feel three slow heartbeats.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i cant sleep my mind keeps racing at night",
+    "response": "That racing mind the moment you lie down is one of the hardest things to rest through. Put your hand on your belly and breathe into it slowly.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel angry all the time i dont know why",
+    "response": "That anger sitting right under the surface is real and it's pointing at something. Take a slow breath out and tell me what's been building up.",
+    "category": "Anxiety"
+  },
+  {
+    "query": "i feel like i want to disappear",
+    "response": "What you're carrying right now is real and it's too heavy to carry alone. Please call or text 988 right now — someone is there.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i dont want to be here anymore",
+    "response": "That pain making you not want to be here is real and I hear you. Please reach out to 988 right now — a real person will answer.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i feel like everyone would be better off without me",
+    "response": "Feeling like a burden is one of the most painful lies pain tells us. Please text or call 988 right now — you deserve someone to talk to.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i think about ending my life",
+    "response": "You reaching out right now matters. Please call or text 988 immediately — a trained counselor is there right now.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i have thoughts of hurting myself",
+    "response": "What you're feeling right now is real and heavy. Please text 988 right now — someone is there and ready to listen.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i dont see a reason to keep going",
+    "response": "That feeling where there's no reason ahead is one of the darkest places to be. Please call or text 988 right now — you don't have to carry this alone.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i feel like nothing will ever get better its hopeless",
+    "response": "That trapped feeling where no door seems open is real. Please reach out to 988 — a real person is there right now.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i want to sleep and not wake up",
+    "response": "You reaching out here means part of you is still holding on. Please call or text 988 right now — someone is there.",
+    "category": "Suicidal"
+  },
+  {
+    "query": "i had a good day today",
+    "response": "That's good to hear. What made it good — was there something specific that happened?",
+    "category": "Normal"
+  },
+  {
+    "query": "i feel okay today just checking in",
+    "response": "Glad you checked in. Anything on your mind you want to talk through, or just touching base?",
+    "category": "Normal"
+  },
+  {
+    "query": "i feel a little better than yesterday",
+    "response": "That small shift matters. What do you think made today feel a little lighter?",
+    "category": "Normal"
+  },
+  {
+    "query": "things have been stressful but im managing",
+    "response": "Managing under stress takes real effort. What's been the heaviest part of it?",
+    "category": "Normal"
+  },
+  {
+    "query": "i feel grateful today",
+    "response": "That's worth holding onto. What came through for you today?",
+    "category": "Normal"
+  },
+  {
+    "query": "i had a rough day but i got through it",
+    "response": "Getting through a rough day is real. What was the hardest part?",
+    "category": "Normal"
+  },
+  {
+    "query": "i feel like im finally making some progress",
+    "response": "That sense of movement forward is real and worth noticing. What's been shifting for you?",
+    "category": "Normal"
+  },
+  {
+    "query": "i feel drained even after sleeping",
+    "response": "That exhaustion that sleep doesn't fix is one of the harder kinds to live with. Notice where in your body you're holding the most tension right now.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel disconnected from everything and everyone",
+    "response": "That disconnected feeling like you're watching your own life through glass is disorienting. Feel something solid near you right now — a table, a wall.",
+    "category": "Depression"
+  },
+  {
+    "query": "i cry myself to sleep most nights",
+    "response": "Crying yourself to sleep night after night is exhausting and lonely. You don't have to hold it together right now.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel like im falling apart",
+    "response": "That feeling of coming apart at the seams is real. Put one hand on your chest right now and feel it rise and fall.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel like no one understands me",
+    "response": "That loneliness of feeling unseen by the people around you is real. I hear you right now — tell me more about what's been happening.",
+    "category": "Depression"
+  },
+  {
+    "query": "i feel like i cant do anything right",
+    "response": "That feeling of constant failure no matter what you do is exhausting and painful. What's one small thing you did today, even something tiny?",
+    "category": "Depression"
+  },
+  {
+    "query": "i have been isolating myself from everyone",
+    "response": "That pull to withdraw and be alone when you're hurting is real. I'm glad you're here talking right now.",
+    "category": "Depression"
+  }
+]

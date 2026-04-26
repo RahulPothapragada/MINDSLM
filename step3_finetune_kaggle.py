@@ -3,11 +3,11 @@
 STEP 3: Fine-Tune Qwen2.5-14B-Instruct for Mental Health Responses
 ==========================================================================
 🏷️  Model Name: MindSLM
-📊  Base Model: Qwen/Qwen2.5-14B-Instruct
+📊  Base Model: Qwen/Qwen2.5-7B-Instruct
 🔧  Method: QLoRA (4-bit quantization + LoRA adapters)
 🖥️  Hardware: Kaggle T4 x2 (30GB VRAM total)
 📦  Data: Counsel Chat (real therapist Q&As) — downloaded directly from HuggingFace
-⏱️  Training Time: ~3-5 hours
+⏱️  Training Time: ~1-2 hours
 
 HOW TO USE ON KAGGLE:
 1. Create a new Kaggle Notebook
@@ -16,7 +16,7 @@ HOW TO USE ON KAGGLE:
 4. Paste this entire file into the notebook (split at CELL markers)
 5. Run all cells in order
 
-Output: Merged model saved to /kaggle/working/mindslm-14b-merged/
+Output: Merged model saved to /kaggle/working/mindslm-7b-merged/
         Then zip and download for GGUF conversion
 ==========================================================================
 """
@@ -65,9 +65,9 @@ for i in range(torch.cuda.device_count()):
 # ════════════════════════════════════════════════════════
 # CELL 3: Configuration
 # ════════════════════════════════════════════════════════
-BASE_MODEL  = "Qwen/Qwen2.5-14B-Instruct"
-OUTPUT_DIR  = "/kaggle/working/mindslm-14b-lora"
-MERGED_DIR  = "/kaggle/working/mindslm-14b-merged"
+BASE_MODEL  = "Qwen/Qwen2.5-7B-Instruct"
+OUTPUT_DIR  = "/kaggle/working/mindslm-7b-lora"
+MERGED_DIR  = "/kaggle/working/mindslm-7b-merged"
 
 # QLoRA — conservative settings for T4x2 with 14B
 LORA_R          = 8       # Lower rank = less VRAM
@@ -80,7 +80,7 @@ LORA_TARGET_MODULES = [
 
 # Training — small batch to fit in 30GB total VRAM
 NUM_EPOCHS            = 3
-BATCH_SIZE            = 1    # Must be 1 for 14B on T4
+BATCH_SIZE            = 2    # 7B fits with batch 2 on T4x2
 GRADIENT_ACCUMULATION = 16   # Effective batch = 16
 LEARNING_RATE         = 1e-4 # Lower LR for larger model
 MAX_SEQ_LENGTH        = 512
@@ -184,6 +184,8 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token     = tokenizer.eos_token
     tokenizer.pad_token_id  = tokenizer.eos_token_id
 
+tokenizer.model_max_length = MAX_SEQ_LENGTH
+
 print(f"Vocab size: {tokenizer.vocab_size}")
 
 # ════════════════════════════════════════════════════════
@@ -195,7 +197,7 @@ print("(This downloads ~28GB of weights — takes 10-15 minutes first time)")
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_compute_dtype=torch.bfloat16,
     bnb_4bit_use_double_quant=True,
 )
 
@@ -204,7 +206,7 @@ model = AutoModelForCausalLM.from_pretrained(
     quantization_config=bnb_config,
     device_map="auto",          # Spreads across both T4 GPUs automatically
     trust_remote_code=True,
-    torch_dtype=torch.float16,
+    torch_dtype=torch.bfloat16,
 )
 
 model = prepare_model_for_kbit_training(model)
@@ -250,7 +252,6 @@ training_args = SFTConfig(
     weight_decay=WEIGHT_DECAY,
     warmup_steps=WARMUP_STEPS,
     lr_scheduler_type=LR_SCHEDULER,
-    max_seq_length=MAX_SEQ_LENGTH,
 
     eval_strategy="steps",
     eval_steps=50,
@@ -265,14 +266,15 @@ training_args = SFTConfig(
     logging_first_step=True,
     report_to="none",
 
-    fp16=True,
+    fp16=False,
+    bf16=True,
     optim="paged_adamw_8bit",
     gradient_checkpointing=True,
     gradient_checkpointing_kwargs={"use_reentrant": False},
 
     seed=42,
     remove_unused_columns=False,
-    dataloader_num_workers=0,  # 0 for stability on Kaggle
+    dataloader_num_workers=0,
 )
 
 # ════════════════════════════════════════════════════════
@@ -394,11 +396,11 @@ print(f"\nZipping merged model for download...")
 import subprocess
 
 result = subprocess.run(
-    ["zip", "-r", "/kaggle/working/mindslm-14b-merged.zip", MERGED_DIR],
+    ["zip", "-r", "/kaggle/working/mindslm-7b-merged.zip", MERGED_DIR],
     capture_output=True, text=True
 )
 
-size_gb = os.path.getsize("/kaggle/working/mindslm-14b-merged.zip") / (1024**3)
-print(f"mindslm-14b-merged.zip created ({size_gb:.1f} GB)")
+size_gb = os.path.getsize("/kaggle/working/mindslm-7b-merged.zip") / (1024**3)
+print(f"mindslm-7b-merged.zip created ({size_gb:.1f} GB)")
 print("\nDownload from Kaggle Output tab → mindslm-14b-merged.zip")
 print("Then run: python3 step4_export_ollama.py")

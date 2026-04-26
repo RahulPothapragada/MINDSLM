@@ -1,5 +1,85 @@
 # MindSLM — Project Context & Upgrade Plan
 
+---
+
+## 🔴 TOP PRIORITY: Response Quality
+
+**The single most important thing to fix right now is response quality.**
+The model currently generates generic, educational responses instead of empathetic, specific ones.
+This is the core product problem. Everything else (frontend, RAG, memory) is secondary until this is solved.
+
+### Root Causes (diagnosed 2026-04-26)
+
+**1. RAG is actively making responses worse**
+- Counsel Chat dataset is Q&A forum posts, not conversational therapy
+- Responses retrieved are educational ("common symptoms of depression", "keeping a log", blog links)
+- Injecting these examples teaches the model to respond the same way
+- **Fix applied:** quality filter + cosine distance threshold (< 0.45) — effectively disables RAG until better data exists
+- **Permanent fix needed:** replace Counsel Chat with a curated dataset of 50–100 ideal short empathetic responses
+
+**2. Training data taught the model to explain, not empathise**
+- `step2_format_dataset.py` system prompt included: "explain briefly why it helps"
+- Counsel Chat training examples are 3-paragraph forum answers, not 2-sentence empathetic replies
+- Model learned psychoeducation style: "anxiety is part of the fight-or-flight response..." 
+- **Fix needed:** filter `response_dataset_v2.csv` to keep only responses < 60 words that don't contain educational phrases, retrain
+
+**3. 7B model has weak instruction following**
+- val loss plateaued at step 300 → model only partially absorbed training style
+- ~1200 training examples not enough to override Qwen base defaults
+- Base Qwen 7B reverts to its pre-training style when uncertain
+- **Fix needed:** test qwen2.5:14b base immediately — 14B follows instructions significantly better
+
+**4. Training and inference system prompts were mismatched**
+- Training prompt: "acknowledge, offer technique, explain why it helps"
+- Inference prompt: "2 sentences max, name the specific thing, suggest one small action"
+- Model was never trained to match what the inference prompt asks for
+
+### The Fix Plan (in priority order)
+
+#### Step 1 — Test qwen2.5:14b base (15 minutes, do this first)
+```bash
+MODEL_NAME=qwen2.5:14b python3 mindslm_pipeline_api.py
+```
+Send "i am feeling low" and compare to mindslm-7b output.
+If 14B base is already better → confirms the 7B is the bottleneck, not the prompts.
+
+#### Step 2A — If 14B base is better: MLX fine-tune 14B locally
+- Install MLX: `pip install mlx-lm`
+- Filter training data first (see Step 3)
+- Fine-tune Qwen2.5-14B-Instruct with MLX on filtered dataset
+- Quantize to Q4_K_M (~8.5GB) → fits on 18GB M3 Pro with room to spare
+- This is the target architecture: fine-tuned 14B + curated RAG
+
+#### Step 2B — If 14B base is not better: retrain 7B on Kaggle with filtered data
+- Filter dataset, fix system prompt, retrain
+- Use as interim while MLX 14B training runs
+
+#### Step 3 — Filter training data (do before any retraining)
+Edit `step2_format_dataset.py`:
+- Keep only responses where `len(response.split()) < 60`
+- Remove responses containing: "common", "symptom", "disorder", "diagnos", "fight or flight", "it is normal", "many people", "it is important to", "you may want to", "I would suggest", "I recommend"
+- Remove the "explain briefly why it helps" line from SYSTEM_PROMPTS
+- Change system prompt to: "Name the specific thing they said. Suggest one small action right now. 2 sentences max. No explanations."
+- Expected: filters ~60% of Counsel Chat responses, keeps ~400–500 high-quality short ones
+- Retrain on Kaggle (same setup: Qwen2.5-7B or 14B, QLoRA r=16 alpha=32, 3 epochs)
+
+#### Step 4 — Build curated RAG dataset (50–100 hand-crafted ideal responses)
+Create `curated_rag.jsonl` with entries like:
+```json
+{"user": "i am feeling low", "category": "Depression", "response": "That heavy, low feeling can make everything feel pointless. Put both feet flat on the floor right now and take one slow breath."}
+{"user": "i feel really anxious", "category": "Anxiety", "response": "The anxiety you're describing is real. Try box breathing right now — inhale 4 counts, hold 4, exhale 4, repeat twice."}
+```
+Then rebuild ChromaDB with these as primary source + Counsel Chat as fallback.
+Even 50 high-quality examples will outperform 2,400 mediocre Counsel Chat entries.
+
+### What a good response looks like
+**Bad (current):** "We are sorry you are feeling this way. The world is filled with so many things to enjoy and appreciate but it's easy for us to focus on the negative."
+**Bad (current):** "Anxiety is a normal response to stress. It's part of the fight-or-flight system which prepares us for danger."
+**Good (target):** "That low and heavy feeling you're carrying right now is real. Put both feet flat on the floor and take one slow breath."
+**Good (target):** "The anxiety you're feeling before meetings is your body in overdrive. Try box breathing right now — 4 counts in, hold 4, out 4."
+
+---
+
 ## Progress Tracker
 
 | Phase | Status | Notes |
@@ -8,16 +88,17 @@
 | Phase 2: PHQ-9/GAD-7 screening | DONE | screening.py — conversational state machine, auto-triggers |
 | Phase 3: SQLite persistence | DONE | database.py — sessions, messages, screening state |
 | Phase 4: Frontend (emotions + screening + timeline) | DONE | Emotion tags, screening badge, mood timeline modal (vanilla JS) |
-| Phase 5: Retrain data pipeline | DONE | Counsel Chat (937 real therapist) + 300 suicidal supplement; 3-epoch QLoRA retrain on Kaggle T4x2 (loss 1.796→1.628). Merged, GGUF, Ollama. |
+| Phase 5: QLoRA 7B fine-tune + export | DONE | Qwen2.5-7B-Instruct, r=8 alpha=16, Kaggle T4x2. Best checkpoint step 300 (val loss 1.6526). Merged → F16 GGUF (14GB) → Q4_K_M (4.4GB) → mindslm-7b:latest in Ollama. 14B attempted but OOM during training. |
 | Phase 6: Evaluation / ablation | PARTIAL | Track 3 (classifier comparison) done; Tracks 1-2 need GEMINI_API_KEY (quota exhausted) |
-| Phase 7: 14B Model + RAG | TODO | Swap mindslm 1.5B → Qwen2.5-14B + ChromaDB retrieval over real therapist data |
-| Phase 8: Conversation Memory | TODO | Embed + retrieve past user messages across sessions |
-| Phase 9: React Frontend Rebuild | TODO | Full rewrite in React + Vite with all new UI features |
-| Phase 10: CBT Interactive Exercises | TODO | Breathing timer, 5-4-3-2-1 grounding, thought record |
+| Phase 7: RAG pipeline | DONE | rag.py with ChromaDB, Counsel Chat therapist responses embedded with MiniLM |
+| Phase 8: Conversation Memory | DONE | memory.py — per-session user message embedding + retrieval via ChromaDB |
+| Phase 9: React Frontend Rebuild | DONE | React + Vite, Apple-inspired dark theme (#000 bg, #30d158 green accent, #f5f5f7 text). All inline styles (Tailwind v4 dropped — arbitrary opacity syntax broken). Pages: Landing, Login, Register, Dashboard, Chat, Exercises, Insights. |
+| Phase 10: CBT Interactive Exercises | DONE | Box breathing (4-4-4-2 animated circle) + 5-4-3-2-1 grounding (multi-step with progress bar). Both in Exercises.jsx. |
 | Phase 11: Voice Input (Whisper) | TODO | Local STT via whisper.cpp on M3 Pro |
 | Phase 12: Severity Escalation Alerts | TODO | PHQ-9 trend monitoring across sessions → crisis alert |
 | Phase 13: Confidence-Blended Prompts | TODO | Blend category prompts when classifier is uncertain |
-| Phase 14: Evaluation (updated) | TODO | Re-run with 14B + RAG, fill paper results table |
+| Phase 14: 14B MLX Fine-tune | TODO | Fine-tune Qwen2.5-14B locally via Apple MLX (no CUDA, no OOM). Inference: ~8.5GB Q4_K_M — fits on 18GB. |
+| Phase 15: Evaluation (updated) | TODO | Re-run with 14B + RAG, fill paper results table |
 
 ---
 
@@ -29,22 +110,45 @@ A local-first mental health screening and support system. Runs entirely on-devic
 
 ## Current State (what exists and works)
 
-- `mindslm` Ollama model: Qwen2.5-1.5B fine-tuned via QLoRA (mindslm-f16.gguf)
+- `mindslm-7b` Ollama model: Qwen2.5-7B fine-tuned via QLoRA, Q4_K_M quantized (4.4GB). Best checkpoint step 300, val loss 1.6526. Registered as mindslm-7b:latest.
+- `mindslm` Ollama model: old Qwen2.5-1.5B (still present, 3.1GB — kept for comparison)
 - GoEmotions 27-class emotion classifier (SamLowe/roberta-base-go_emotions)
 - TF-IDF + LogReg classifier (safety net for suicidal keywords)
 - PHQ-9/GAD-7 conversational state machine (screening.py)
 - SQLite persistence (database.py) — sessions, messages, screening state
-- Vanilla JS frontend — emotion tags, screening badge, mood timeline (Chart.js)
-- API server: mindslm_pipeline_api.py on port 8080
+- RAG: rag.py with ChromaDB over Counsel Chat therapist responses
+- Memory: memory.py — per-session user message embedding + retrieval
+- React frontend: dark theme, all pages built, exercises implemented
+- API server: mindslm_pipeline_api.py on port 8080, default model = mindslm-7b
 - Training pipeline: step1–step5 scripts
+- llama.cpp installed (homebrew, version 8920) — used for GGUF conversion
 
-### Known problems
+### Key files
+- `mindslm-7b-q4km.gguf` — 4.4GB quantized model (production)
+- `mindslm-7b-f16.gguf` — 14GB F16 GGUF (intermediate, can delete to save space)
+- `mindslm-7b-merged/` — 14.2GB HF safetensors (source for re-conversion if needed)
+- `mindslm-7b-lora/` — 77MB LoRA adapter weights (checkpoint-300 is best)
+- `Modelfile-7b` — Ollama model definition pointing to mindslm-7b-q4km.gguf
+- `frontend-react/` — React + Vite app (dev server on port 5173+)
+- `llama.cpp/` — cloned repo with convert_hf_to_gguf.py (needed for future re-quantization)
 
-- 1.5B model too small → generic, robotic therapist-speak responses
-- No RAG → model has no access to real therapist examples at inference time
-- Vanilla JS → state management for complex UI is painful
-- No cross-session memory → model starts cold every conversation
-- Responses don't reference what user specifically said
+### Known issues / response quality
+- 7B model defaults to educational/generic responses despite system prompt (val loss plateau at step 300 means it didn't fully absorb training style)
+- Responses use "We are sorry" (training data had group/clinic voices) — now stripped by ai_openers filter
+- "It's common to feel..." and "world is filled with things to enjoy" type phrases — now blocked by BANNED list
+- Prefill now injects complete empathetic first sentence e.g. "That low and heavy feeling you're carrying right now is real." so model only adds action sentence
+- Crisis response (Suicidal classification) handled separately in pipeline — always appends 988 resources
+
+### Python environment note
+- Python 3.14 (homebrew) — protobuf must be >=5.0 for chromadb/opentelemetry to work
+- protobuf 4.25.9 was accidentally installed during llama.cpp conversion — upgraded back to 6.33.6
+- gguf Python package (0.18.0) installed but NOT used for conversion — use `PYTHONPATH=llama.cpp/gguf-py` with cloned repo instead
+
+### Open decision: 7B vs 14B
+- 7B fine-tuned: running, domain knowledge from therapist data, but weak instruction following
+- qwen2.5:14b base: already in Ollama (9GB), much stronger instruction following
+- Next step: test `MODEL_NAME=qwen2.5:14b python3 mindslm_pipeline_api.py` to compare
+- Long-term: MLX fine-tune of 14B locally (Apple Silicon, no CUDA, ~8.5GB Q4_K_M inference)
 
 ---
 

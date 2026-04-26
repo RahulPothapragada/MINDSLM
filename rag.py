@@ -51,29 +51,92 @@ def _get_rag_embedder():
     return _rag_embedder
 
 
+# Phrases that indicate a poor-quality RAG example (educational/generic/harmful)
+_RAG_BANNED = [
+    "common symptom", "it's common", "it is common", "this is common",
+    "very common", "most people", "many people", "a lot of people",
+    "fight or flight", "stress hormone", "nervous system",
+    "diagnos", "disorder", "condition", "treatment", "therapist",
+    "seek professional", "see a doctor", "speak with", "consult",
+    "blog", "http", "www.", ".com", ".org",
+    "give yourself credit", "self-esteem",
+    "keeping a log", "write down", "journal",
+    "explain briefly", "the reason is",
+    "it may be a good idea to talk", "it would be helpful to",
+    "four ways", "nuggets of helpfulness",
+]
+
+def _is_quality_rag(text: str) -> bool:
+    """Return True only if the RAG example is short and empathetic, not educational."""
+    t = text.lower()
+    # Reject if contains banned phrases
+    if any(b in t for b in _RAG_BANNED):
+        return False
+    # Reject if too long (educational responses are long)
+    if len(text.split()) > 60:
+        return False
+    # Reject if too short to be useful
+    if len(text.split()) < 8:
+        return False
+    return True
+
+
 def retrieve_examples(user_message: str, category: str = None, n: int = 3) -> list[str]:
     """
-    Retrieve top-n real therapist responses similar to user_message.
-    Returns list of response strings to inject as few-shot examples.
+    Retrieve top-n responses similar to user_message.
+    Prefers curated hand-written responses (threshold 0.38) over
+    general Counsel Chat / EmpatheticDialogues (threshold 0.45).
     """
     col = _get_collection()
     if col is None or col.count() == 0:
         return []
 
-    where = {"category": category} if category and category != "Normal" else None
-
     try:
-        # Pre-compute embedding so ChromaDB doesn't try to download its own model
         emb = _get_rag_embedder().encode(user_message).tolist()
 
-        results = col.query(
+        # ── Pass 1: curated responses only (tighter threshold = higher quality bar) ──
+        curated_results = col.query(
             query_embeddings=[emb],
-            n_results=min(n, col.count()),
-            where=where,
-            include=["documents", "metadatas"],
+            n_results=min(n * 4, col.count()),
+            where={"source": "curated"},
+            include=["documents", "distances"],
         )
-        responses = results["documents"][0] if results["documents"] else []
-        return responses
+        curated_docs  = curated_results["documents"][0] if curated_results["documents"] else []
+        curated_dists = curated_results["distances"][0]  if curated_results["distances"]  else []
+
+        CURATED_THRESHOLD = 0.38
+        good = [
+            doc for doc, dist in zip(curated_docs, curated_dists)
+            if dist < CURATED_THRESHOLD
+        ]
+
+        # ── Pass 2: general corpus fallback (only if curated didn't fill quota) ──
+        if len(good) < n:
+            # For Suicidal, skip category filter (few entries) — rely on quality filter
+            where_gen = {"source": {"$ne": "curated"}}
+            if category and category not in ("Normal", "Suicidal"):
+                # ChromaDB doesn't support AND filter easily; just use source filter
+                pass
+
+            general_results = col.query(
+                query_embeddings=[emb],
+                n_results=min(n * 8, col.count()),
+                where=where_gen,
+                include=["documents", "distances"],
+            )
+            gen_docs  = general_results["documents"][0] if general_results["documents"] else []
+            gen_dists = general_results["distances"][0]  if general_results["distances"]  else []
+
+            # Counsel Chat responses score 0.38–0.55 even for close queries.
+            # Combined with the quality filter this is strict — better no example than a bad one.
+            GENERAL_THRESHOLD = 0.45
+            for doc, dist in zip(gen_docs, gen_dists):
+                if len(good) >= n:
+                    break
+                if dist < GENERAL_THRESHOLD and _is_quality_rag(doc) and doc not in good:
+                    good.append(doc)
+
+        return good[:n]
     except Exception as e:
         print(f"  ⚠️  RAG retrieval failed: {e}")
         return []
@@ -111,8 +174,32 @@ def build():
     ids        = []
     idx = 0
 
+    # ── Source 0: Curated hand-written responses (highest quality) ──
+    print("\n  [0/3] Loading curated responses...")
+    CURATED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "curated_responses.json")
+    try:
+        import json as _json
+        with open(CURATED_PATH) as f:
+            curated = _json.load(f)
+        for entry in curated:
+            query    = entry.get("query", "").strip()
+            response = entry.get("response", "").strip()
+            cat      = entry.get("category", "Normal")
+            if not query or not response:
+                continue
+            documents.append(response)
+            queries.append(query)
+            metadatas.append({"source": "curated", "category": cat})
+            ids.append(f"cur_{idx}")
+            idx += 1
+        print(f"       Added {idx} curated entries")
+    except Exception as e:
+        print(f"       ⚠️  Curated load failed: {e}")
+
+    curated_count = idx
+
     # ── Source 1: Counsel Chat ──────────────────────────────────────
-    print("\n  [1/2] Loading Counsel Chat (real therapist Q&As)...")
+    print("\n  [1/3] Loading Counsel Chat (real therapist Q&As)...")
     try:
         from datasets import load_dataset
         ds = load_dataset("nbertagnolli/counsel-chat", split="train")
@@ -167,7 +254,7 @@ def build():
     cc_count = idx
 
     # ── Source 2: EmpatheticDialogues ──────────────────────────────
-    print("\n  [2/2] Loading EmpatheticDialogues (empathetic conversations)...")
+    print("\n  [2/3] Loading EmpatheticDialogues (empathetic conversations)...")
     try:
         from datasets import load_dataset
         ds = load_dataset("facebook/empathetic_dialogues", split="train", trust_remote_code=True)
@@ -254,9 +341,10 @@ def build():
 
     print(f"\n\n  ✅ RAG store built!")
     print(f"     Total entries:        {collection.count()}")
-    print(f"     Counsel Chat:         {cc_count}")
-    print(f"     EmpatheticDialogues:  {idx - cc_count}")
-    print(f"     Stored at:            {CHROMA_DIR}")
+    print(f"     Curated (hand-written): {curated_count}")
+    print(f"     Counsel Chat:           {cc_count - curated_count}")
+    print(f"     EmpatheticDialogues:    {idx - cc_count}")
+    print(f"     Stored at:              {CHROMA_DIR}")
     print("\n  Test with: python3 rag.py --test\n")
 
 

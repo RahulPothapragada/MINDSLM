@@ -34,7 +34,7 @@ CORS(app)
 # CONFIGURATION
 # ==============================
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
-MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:14b")
+MODEL_NAME = os.getenv("MODEL_NAME", "mindslm-7b")
 MODEL_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 API_PORT   = int(os.getenv("API_PORT", "8080"))
 
@@ -215,9 +215,11 @@ SYSTEM_PROMPTS = {
     ),
 
     "Depression": (
-        "You are a therapist. 2 sentences max. Name the specific thing they described, then suggest one small action they can do RIGHT NOW.\n"
-        "Example: 'Waking up crying with no sleep is draining. "
-        "Get a glass of cold water right now, hold it with both hands, and take 5 slow sips.'"
+        "You are a therapist. EXACTLY 2 sentences. DO NOT explain depression. DO NOT say 'it's common'. DO NOT use 'we'.\n"
+        "Sentence 1: Echo back what they said using their own words, with warmth. Use 'I' not 'We'.\n"
+        "Sentence 2: Give ONE tiny physical action they can do in the next 30 seconds.\n"
+        "Good: 'That heavy, low feeling can make everything feel pointless. Put both feet flat on the floor right now and take one slow breath.' "
+        "Bad: 'It is common to feel low. We are sorry you are feeling this way.'"
     ),
 
     "Suicidal": (
@@ -268,32 +270,65 @@ def _build_prefill(user_message: str, category: str, emotions: list) -> str:
         return ""
 
     # Extract key symptoms from user message to echo back
+    # All descriptions must work as noun phrases after "That ... you're carrying right now is real."
     symptoms = []
     keyword_map = {
-        "sleep": "not sleeping", "waking up": "waking up at night",
-        "cry": "crying", "crying": "crying", "empty": "feeling empty",
-        "hopeless": "feeling hopeless", "lonely": "feeling lonely",
-        "anxious": "the anxiety", "anxiety": "the anxiety",
-        "panic": "panic attacks", "heart racing": "your heart racing",
-        "breathe": "trouble breathing", "breath": "trouble breathing",
-        "chest": "chest tightness", "tired": "exhaustion",
-        "motivation": "losing motivation", "bed": "staying in bed",
-        "worthless": "feeling worthless", "numb": "feeling numb",
-        "worry": "constant worrying", "overwhelm": "being overwhelmed",
+        "sleep": "sleeplessness",
+        "waking up": "waking in the night",
+        "cry": "need to cry",
+        "crying": "urge to cry",
+        "empty": "emptiness",
+        "hopeless": "hopelessness",
+        "lonely": "loneliness",
+        "anxious": "anxiety",
+        "anxiety": "anxiety",
+        "panic": "panic",
+        "heart racing": "racing heart",
+        "breathe": "trouble breathing",
+        "breath": "trouble breathing",
+        "chest": "chest tightness",
+        "tired": "exhaustion",
+        "motivation": "loss of motivation",
+        "bed": "exhaustion",
+        "worthless": "worthlessness",
+        "numb": "numbness",
+        "worry": "worry",
+        "overwhelm": "overwhelm",
+        "low": "heaviness",
+        "down": "low mood",
+        "sad": "sadness",
+        "depressed": "heaviness",
+        "dark": "dark thoughts",
+        "stuck": "stuck feeling",
+        "lost": "lost feeling",
+        "alone": "loneliness",
+        "stressed": "stress",
+        "stress": "stress",
+        "angry": "anger",
+        "anger": "anger",
+        "scared": "fear",
+        "fear": "fear",
+        "shame": "shame",
+        "guilt": "guilt",
+        "point": "hopelessness",
+        "disconnect": "disconnection",
+        "numb": "numbness",
+        "isolat": "isolation",
+        "drain": "exhaustion",
     }
     for keyword, description in keyword_map.items():
         if keyword in msg:
             symptoms.append(description)
 
     if not symptoms:
+        if category == "Depression":
+            return "That heaviness you're feeling right now is real."
+        if category == "Anxiety":
+            return "That anxiety you're carrying right now is real."
         return ""
 
-    symptom_text = " and ".join(symptoms[:2])
-
-    if category == "Anxiety":
-        return f"The {symptom_text} you're describing"
-    else:
-        return f"The {symptom_text}"
+    symptom_text = symptoms[0]
+    return f"That {symptom_text} you're carrying right now is real."
 
 def generate_response(user_message: str, category: str, history: list,
                       emotions: list, screening_prompt: str = "",
@@ -378,6 +413,8 @@ def generate_response(user_message: str, category: str, history: list,
             r"^Hello!?\s*",
             r"^Hi!?\s*",
             r"^I'?m (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]\s*",
+            r"^We(?:'?re| are) (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]\s*",
+            r"^We(?:'?re| are) here (?:to help|for you)\b[^.!?]*[.!?]\s*",
         ]
         for pattern in ai_openers:
             new_text = re.sub(pattern, "", response_text, count=1, flags=re.IGNORECASE)
@@ -414,10 +451,27 @@ def generate_response(user_message: str, category: str, history: list,
             "see your doctor", "speak to your doctor", "consult your doctor",
             "anxiety disorder", "panic attack", "panic disorder",
             "depression disorder", "depressive disorder",
-            "very common for", "is very common",
+            "very common for", "is very common", "it's common", "it is common",
+            "common to feel", "normal to feel", "natural to feel",
+            "can make it hard", "can make it difficult",
+            "result from", "often result", "can result",
+            "life event", "recent event",
+            "can be caused by", "caused by a variety", "variety of factors",
+            "fills your cup", "fill your cup", "what fills",
+            "one way to approach", "one approach",
+            "look at what would help", "what would help you feel",
+            "in order to", "in a way that",
             "the body needs", "function properly", "daily life",
             "imagine yourself", "open meadow", "using this script",
             "isn't just about", "it's also quality",
+            "world is filled", "things to enjoy", "appreciate",
+            "focus on the negative", "focus on the positive",
+            "silver lining", "bright side", "there is always",
+            "count your blessings", "things could be worse",
+            "so many good things", "good things in life",
+            "remember the good", "think positive", "stay positive",
+            "it gets better", "everything will be okay",
+            "things will improve", "tomorrow is another day",
         ]
         sentences_clean = re.split(r'(?<=[.!?])\s*', response_text)
         sentences_clean = [s for s in sentences_clean if s.strip() and not any(b in s.lower() for b in BANNED)]

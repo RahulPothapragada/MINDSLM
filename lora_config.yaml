@@ -1,0 +1,32 @@
+# MLX LoRA fine-tuning config for Qwen2.5-14B-Instruct
+# Run: python3 -m mlx_lm.lora --config lora_config.yaml
+
+model: "./qwen2.5-14b-mlx-4bit"
+train: true
+data: "."                         # looks for train_chat.jsonl + val_chat.jsonl in .
+
+# LoRA hyperparameters
+lora_layers: 16                   # number of transformer layers to apply LoRA to
+lora_parameters:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  scale: 10.0
+
+# Training
+batch_size: 1                     # M3 Pro 18GB — keep at 1 for 14B
+iters: 600                        # ~2 epochs over 288 samples
+val_batches: 10
+learning_rate: 1.0e-5
+lr_schedule:
+  name: cosine_decay
+  warmup: 50
+  arguments: [1.0e-5, 600]
+
+# Checkpointing
+save_every: 100
+adapter_path: "./mindslm-14b-lora"
+
+# Generation during training (validation samples)
+max_seq_length: 512
+grad_checkpoint: true             # saves memory — important for 14B on 18GB

@@ -3,8 +3,16 @@
 *.safetensors
 *.bin
 mindslm-merged/
+mindslm-7b-merged/
+mindslm-7b-lora/
+mindslm-14b-lora/
+qwen2.5-14b-mlx-4bit/
 output/
 llama.cpp/
+
+# Credentials — never commit
+client_secret*.json
+*.credentials.json
 
 # Datasets and training data
 train.csv

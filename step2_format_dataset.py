@@ -15,6 +15,7 @@ Usage: python step2_format_dataset.py
 import pandas as pd
 import json
 import random
+import os
 from sklearn.model_selection import train_test_split
 
 # ── Configuration ──
@@ -24,36 +25,58 @@ VAL_JSONL   = "val_chat.jsonl"
 VAL_RATIO   = 0.1
 
 # ── System Prompts (embedded in training data) ──
-# Updated to match the new pipeline's conversational style
+# Must match mindslm_pipeline_api.py SYSTEM_PROMPTS exactly.
+# DO NOT add "explain briefly why it helps" — that teaches generic educational responses.
 SYSTEM_PROMPTS = {
     "Anxiety": (
-        "You are MindSLM, a compassionate mental health support companion. "
-        "The user is experiencing anxiety. Acknowledge what they described specifically, "
-        "offer a practical grounding technique, and explain briefly why it helps. "
-        "Sound like a calm friend, not a textbook. Keep it under 5 sentences. "
-        "No platitudes like 'it takes courage' or 'you matter'."
+        "You are a therapist. 2 sentences max. Name their specific symptom, then give one concrete technique.\n"
+        "Example: 'That racing heart before your meeting is your body in overdrive. "
+        "Try box breathing: inhale 4 counts, hold 4, exhale 4, repeat 3 times.'"
     ),
     "Depression": (
-        "You are MindSLM, a compassionate mental health support companion. "
-        "The user is showing signs of depression. Name the specific feeling they expressed. "
-        "Suggest one small action they can take right now. Be direct and human — "
-        "not cheerful, not clinical. Keep it under 5 sentences. "
-        "Never say 'you matter' or 'you're not alone' as filler."
+        "You are a therapist. EXACTLY 2 sentences. DO NOT explain depression. DO NOT say 'it's common'. DO NOT use 'we'.\n"
+        "Sentence 1: Echo back what they said using their own words, with warmth. Use 'I' not 'We'.\n"
+        "Sentence 2: Give ONE tiny physical action they can do in the next 30 seconds.\n"
+        "Good: 'That heavy, low feeling can make everything feel pointless. Put both feet flat on the floor right now and take one slow breath.' "
+        "Bad: 'It is common to feel low. We are sorry you are feeling this way.'"
     ),
     "Suicidal": (
-        "You are MindSLM, a crisis support companion. "
-        "The user may be in crisis. Open with 'I'm really glad you told me this.' "
-        "Validate the pain without minimizing. Direct them to 988 (call or text). "
-        "Do not give coping tips or silver linings. Presence and direction only. "
-        "3-4 sentences max. Crisis resources are appended automatically."
+        "You are a crisis counselor. 2 sentences max.\n"
+        "Example: 'What you are carrying right now is real and heavy. "
+        "Please call or text 988 right now — someone is there to listen.'"
     ),
-    "Normal": (
-        "You are MindSLM, a friendly mental health check-in companion. "
-        "The user seems to be doing okay. Respond warmly in 2 sentences max. "
-        "Ask one curious follow-up about something they mentioned. "
-        "No unsolicited advice."
-    ),
+    "Normal": "You are a friend. 1 sentence reply + 1 follow-up question. No advice.",
 }
+
+# ── Response quality filter ──
+# Mirrors the BANNED list in mindslm_pipeline_api.py + RAG quality filter.
+# Remove any training example whose response contains these phrases.
+_RESPONSE_BANNED = [
+    "explain briefly", "why it helps", "it's common", "it is common",
+    "common to feel", "normal to feel", "very common", "most people", "many people",
+    "fight or flight", "stress hormone", "nervous system",
+    "diagnos", "disorder", "condition", "seek professional", "see a doctor",
+    "speak with", "consult", "talk to your doctor",
+    "blog", "http", "www.", ".com", ".org",
+    "self-esteem", "keeping a log", "write down",
+    "one way to approach", "in order to", "a variety of factors",
+    "you're not alone", "you are not alone", "you matter",
+    "it gets better", "everything will be okay", "think positive",
+    "silver lining", "bright side", "count your blessings",
+    "there are a number", "a number of things",
+]
+
+def _is_quality_response(text: str) -> bool:
+    """Return True only if the response is short and empathetic, not educational."""
+    t = text.lower()
+    if any(b in t for b in _RESPONSE_BANNED):
+        return False
+    words = len(text.split())
+    if words > 80:   # too long = educational / rambling
+        return False
+    if words < 8:    # too short to be useful
+        return False
+    return True
 
 
 def format_for_qwen(row):
@@ -80,15 +103,48 @@ def process_dataset(input_csv, train_jsonl, val_jsonl, val_ratio):
     df = df[df["response"].str.len() > 10]
     df = df[df["status"].isin(["Anxiety", "Depression", "Suicidal", "Normal"])]
     print(f"  After cleaning: {len(df)} samples")
+
+    # Quality filter — remove educational / too-long / banned-phrase responses
+    before = len(df)
+    df = df[df["response"].apply(_is_quality_response)]
+    print(f"  After quality filter: {len(df)} samples ({before - len(df)} removed)")
     print(f"  Distribution: {dict(df['status'].value_counts())}")
 
-    # Format
+    # Format Counsel Chat samples
     formatted = [format_for_qwen(row) for _, row in df.iterrows()]
 
-    # Stratified split
+    # ── Add curated hand-written responses ──────────────────────────
+    CURATED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "curated_responses.json")
+    curated_formatted = []
+    if os.path.exists(CURATED_PATH):
+        with open(CURATED_PATH) as f:
+            curated = json.load(f)
+        for entry in curated:
+            query    = entry.get("query", "").strip()
+            response = entry.get("response", "").strip()
+            status   = entry.get("category", "Normal")
+            if not query or not response or status not in SYSTEM_PROMPTS:
+                continue
+            curated_formatted.append({
+                "messages": [
+                    {"role": "system",    "content": SYSTEM_PROMPTS[status]},
+                    {"role": "user",      "content": query},
+                    {"role": "assistant", "content": response},
+                ]
+            })
+        print(f"  ✅ Curated responses: {len(curated_formatted)} samples added")
+    else:
+        print(f"  ⚠️  curated_responses.json not found — skipping")
+
+    # Duplicate curated samples 3x so they dominate the training signal
+    formatted = formatted + (curated_formatted * 3)
+    random.seed(42)
+    random.shuffle(formatted)
+    print(f"  Total after combining: {len(formatted)} samples")
+
+    # Split (no stratify — mixed sources after curated injection)
     train_data, val_data = train_test_split(
         formatted, test_size=val_ratio, random_state=42,
-        stratify=df["status"]
     )
 
     random.seed(42)
