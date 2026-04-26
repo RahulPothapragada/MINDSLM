@@ -166,57 +166,69 @@ function RobotModel({ onPointerOver, onPointerOut }) {
 export default function RobotAvatar() {
   const [hovered, setHovered] = useState(false)
 
-  // Ensure voices are loaded
-  useEffect(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.getVoices()
-    }
-  }, [])
+  const isSpeaking = useRef(false)
 
-  const handleSpeak = () => {
-    console.log("Click registered. Attempting to trigger Voice Assistant...");
-    if ('speechSynthesis' in window) {
-      // KNOWN CHROME BUG: Calling cancel() right before speak() can instantly trigger an error.
-      // Instead, we check if it is already speaking and just ignore the click.
-      if (window.speechSynthesis.speaking) {
-        console.log("Already speaking, ignoring click.");
+  const handleSpeak = async (e) => {
+    if (e) e.stopPropagation() // Prevent double firing from bubbling events
+    if (isSpeaking.current) return // Prevent overlapping audio
+    
+    isSpeaking.current = true
+    console.log("Connecting to ElevenLabs API to generate realistic human voice...");
+    
+    try {
+      const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+      
+      if (!apiKey || apiKey === 'your_elevenlabs_api_key_here') {
+        console.error("ElevenLabs API Key is missing. Please add it to your .env file.");
+        isSpeaking.current = false;
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance("How can I help you today?")
-      const voices = window.speechSynthesis.getVoices()
-      
-      // Try to find a friendly voice if they are loaded
-      if (voices.length > 0) {
-        const preferredVoice = voices.find(v => 
-          v.name.includes('Female') || 
-          v.name.includes('Samantha') || 
-          v.name.includes('Google UK English Female') ||
-          v.name.includes('Victoria')
-        )
-        
-        if (preferredVoice) {
-          utterance.voice = preferredVoice
-        }
-      }
-      
-      utterance.rate = 0.95
-      utterance.pitch = 1.1 // Slightly higher pitch for friendliness
-      utterance.volume = 1.0 // Ensure volume is maxed
-      
-      utterance.onstart = () => console.log("Voice started playing!");
-      utterance.onerror = (e) => {
-        console.error("Voice playback error: ", e);
-        console.error("Error reason: ", e.error); // This will tell us specifically why it failed (e.g. 'interrupted', 'not-allowed')
-      };
-      
-      // Give the browser a tiny delay to ensure the event stack clears, which helps with 'not-allowed' errors in React
-      setTimeout(() => {
-        window.speechSynthesis.speak(utterance);
-      }, 50);
+      // Rachel - a calm, professional, and empathetic female voice perfect for mental health AI
+      const voiceId = "21m00Tcm4TlvDq8ikWAM"; 
+      const textToSpeak = "Hi there. I am Mind S L M. How are you feeling today?";
 
-    } else {
-      console.warn("Speech Synthesis API is not supported in this browser.");
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': apiKey
+        },
+        body: JSON.stringify({
+          text: textToSpeak,
+          model_id: "eleven_monolingual_v1",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`ElevenLabs API error: ${response.status} ${response.statusText}`);
+      }
+
+      // Convert the response stream into a playable audio blob
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      
+      // Unlock the click state only when the audio finishes playing naturally
+      audio.onended = () => { 
+        isSpeaking.current = false;
+      }
+      audio.onerror = () => { 
+        console.error("Failed to play the generated audio.");
+        isSpeaking.current = false;
+      }
+
+      console.log("Playing highly realistic voice...");
+      await audio.play();
+
+    } catch (error) {
+      console.error("Voice generation failed:", error);
+      isSpeaking.current = false;
     }
   }
 
