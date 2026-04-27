@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Brain, Activity, Database, Lock, ShieldCheck, Plus, Sparkles } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import RobotAvatar from '../components/RobotAvatar'
+import { Spotlight } from '../components/Spotlight'
 
 const faqs = [
   {
@@ -23,7 +24,7 @@ const faqs = [
   {
     num: '04',
     q: 'Is this a replacement for real therapy?',
-    a: 'No. MindSLM is a supplementary support and clinical screening tool. It is not a replacement for professional medical help. If you are in crisis, please contact emergency services or 988 immediately.',
+    a: 'No. MindSLM is a supplementary support and clinical screening tool. It is not a replacement for professional medical help. If you are in crisis, please call iCall at 9152987821 or emergency services at 112 immediately.',
   },
 ]
 
@@ -99,9 +100,10 @@ export default function Landing() {
             </button>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8, delay: 0.2 }} style={{ flex: '1 1 500px', height: 600, position: 'relative' }}>
+        <div style={{ flex: '1 1 500px', height: 600, position: 'relative', animation: 'robotZoomIn 1s cubic-bezier(0.16,1,0.3,1) forwards' }}>
+          <Spotlight style={{ top: '-20%', left: '10%' }} />
           <RobotAvatar />
-        </motion.div>
+        </div>
       </section>
 
       {/* Bento Box Grid */}
@@ -255,7 +257,7 @@ export default function Landing() {
             <span style={{ fontSize: 14, fontWeight: 600, color: '#FFFFFF' }}>MindSLM © 2026</span>
           </div>
           <p style={{ color: '#888888', fontSize: 13 }}>
-            If in crisis, call or text <span style={{ color: '#FFFFFF', fontWeight: 600 }}>988</span>.
+            If in crisis, call <span style={{ color: '#FFFFFF', fontWeight: 600 }}>iCall 9152987821</span> or <span style={{ color: '#FFFFFF', fontWeight: 600 }}>112</span>.
           </p>
         </div>
       </footer>
@@ -264,6 +266,10 @@ export default function Landing() {
       <style>{`
         @media (max-width: 900px) {
           div[style*="grid-template-columns: repeat(12, 1fr)"] > div { grid-column: span 12 !important; min-height: auto !important; }
+        }
+        @keyframes robotZoomIn {
+          0%   { opacity: 0; transform: scale(0.6) translateY(40px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
         }
       `}</style>
     </div>

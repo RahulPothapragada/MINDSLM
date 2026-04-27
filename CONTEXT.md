@@ -97,7 +97,7 @@ Even 50 high-quality examples will outperform 2,400 mediocre Counsel Chat entrie
 | Phase 11: Voice Input (Whisper) | TODO | Local STT via whisper.cpp on M3 Pro |
 | Phase 12: Severity Escalation Alerts | TODO | PHQ-9 trend monitoring across sessions → crisis alert |
 | Phase 13: Confidence-Blended Prompts | TODO | Blend category prompts when classifier is uncertain |
-| Phase 14: 14B MLX Fine-tune | TODO | Fine-tune Qwen2.5-14B locally via Apple MLX (no CUDA, no OOM). Inference: ~8.5GB Q4_K_M — fits on 18GB. |
+| Phase 14: 14B MLX Fine-tune | DONE | QLoRA r=16 alpha=32, 600 steps on filtered dataset. Val loss 0.453 (vs 7B plateau 1.6526). Fused → F16 GGUF (28GB) → Q4_K_M (8.4GB) → mindslm-14b:latest in Ollama. API default updated. |
 | Phase 15: Evaluation (updated) | TODO | Re-run with 14B + RAG, fill paper results table |
 
 ---
@@ -144,11 +144,10 @@ A local-first mental health screening and support system. Runs entirely on-devic
 - protobuf 4.25.9 was accidentally installed during llama.cpp conversion — upgraded back to 6.33.6
 - gguf Python package (0.18.0) installed but NOT used for conversion — use `PYTHONPATH=llama.cpp/gguf-py` with cloned repo instead
 
-### Open decision: 7B vs 14B
-- 7B fine-tuned: running, domain knowledge from therapist data, but weak instruction following
-- qwen2.5:14b base: already in Ollama (9GB), much stronger instruction following
-- Next step: test `MODEL_NAME=qwen2.5:14b python3 mindslm_pipeline_api.py` to compare
-- Long-term: MLX fine-tune of 14B locally (Apple Silicon, no CUDA, ~8.5GB Q4_K_M inference)
+### 7B vs 14B — resolved
+- **mindslm-14b is now the production model** (registered in Ollama, API default updated)
+- Val loss 0.453 vs 7B plateau 1.6526 — significantly better instruction following
+- mindslm-7b kept in Ollama for comparison/ablation
 
 ---
 

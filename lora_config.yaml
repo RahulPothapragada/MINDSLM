@@ -3,7 +3,7 @@
 
 model: "./qwen2.5-14b-mlx-4bit"
 train: true
-data: "."                         # looks for train_chat.jsonl + val_chat.jsonl in .
+data: "."                         # mlx_lm expects train.jsonl + valid.jsonl
 
 # LoRA hyperparameters
 lora_layers: 16                   # number of transformer layers to apply LoRA to

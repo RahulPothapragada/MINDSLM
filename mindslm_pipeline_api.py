@@ -16,10 +16,10 @@ import json
 import time
 import requests
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 import joblib
 import numpy as np
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 
 import database as db
@@ -34,7 +34,7 @@ CORS(app)
 # CONFIGURATION
 # ==============================
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
-MODEL_NAME = os.getenv("MODEL_NAME", "mindslm-7b")
+MODEL_NAME = os.getenv("MODEL_NAME", "mindslm-14b")
 MODEL_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 API_PORT   = int(os.getenv("API_PORT", "8080"))
 
@@ -60,7 +60,7 @@ try:
         "embarrassment": "Depression",
         # Anxiety cluster
         "fear": "Anxiety", "nervousness": "Anxiety", "confusion": "Anxiety",
-        "annoyance": "Anxiety",
+        "annoyance": "Normal",
         # Positive cluster
         "joy": "Normal", "love": "Normal", "admiration": "Normal",
         "amusement": "Normal", "approval": "Normal", "caring": "Normal",
@@ -109,6 +109,15 @@ try:
             "I'm having a panic attack", "I'm overwhelmed with stress", "I can't relax",
             "I can't stop overthinking", "I feel like something bad will happen",
         ],
+        "Abuse": [
+            "he touched me without consent", "bad touch", "touched me inappropriately",
+            "sexual harassment", "sexual assault", "groped me", "molested me",
+            "touched me where I didn't want", "forced himself on me", "forced herself on me",
+            "non-consensual touching", "without my consent", "without my permission",
+            "he abused me", "she abused me", "they abused me", "physically abused",
+            "emotionally abused", "domestic violence", "he hit me", "she hit me",
+            "I was raped", "rape", "he forced me", "inappropriate touching",
+        ],
         "Normal": [
             "I'm doing fine today", "things are going well", "I feel good",
             "just checking in", "I had a good day", "feeling okay",
@@ -150,7 +159,7 @@ def classify_message(text: str) -> dict:
     emotions = []
     category = "Normal"
     confidence = 0.5
-    category_scores = {"Anxiety": 0, "Depression": 0, "Normal": 0, "Suicidal": 0}
+    category_scores = {"Anxiety": 0, "Depression": 0, "Normal": 0, "Suicidal": 0, "Abuse": 0}
 
     if GOEMOTIONS_OK:
         raw = _emotion_classifier(text[:512])[0]  # list of {label, score}
@@ -178,6 +187,14 @@ def classify_message(text: str) -> dict:
             category = "Suicidal"
             confidence = max(confidence, round(float(sui_sims.max()), 4))
             category_scores["Suicidal"] = confidence
+
+    # Abuse safety net — non-consensual touch, assault, domestic violence
+    if SEMANTIC_OK:
+        abuse_sims = util.cos_sim(emb, _anchor_embs["Abuse"])[0]
+        if float(abuse_sims.max()) >= 0.48:
+            category = "Abuse"
+            confidence = max(confidence, round(float(abuse_sims.max()), 4))
+            category_scores["Abuse"] = confidence
 
     # If GoEmotions failed, use semantic + TF-IDF ensemble
     if not GOEMOTIONS_OK:
@@ -209,38 +226,52 @@ def classify_message(text: str) -> dict:
 # ==============================
 SYSTEM_PROMPTS = {
     "Anxiety": (
-        "You are a therapist. 2 sentences max. Name their specific symptom, then give one concrete technique.\n"
-        "Example: 'That racing heart before your meeting is your body in overdrive. "
-        "Try box breathing: inhale 4 counts, hold 4, exhale 4, repeat 3 times.'"
+        "You are a therapist. EXACTLY 2 sentences. You MUST respond to the specific situation the user described.\n"
+        "Sentence 1: Name the EXACT trigger or situation they mentioned — use their words (person's name, event, place). NEVER say 'anxiety' or 'stress' generically.\n"
+        "Sentence 2: Give ONE action that applies DIRECTLY to their specific situation. BANNED: breathing exercises, 'take a breath', 'slow breaths', grounding exercises. Instead give something that addresses what they actually said.\n"
+        "Good (person conflict): 'Dealing with Rahul all morning when he won't stop is genuinely exhausting. Step away for 5 minutes — put headphones on, close a door, anything to create distance right now.'\n"
+        "Good (work pressure): 'That deadline sitting over everything makes it impossible to think clearly. Write down just the one thing that has to happen today and ignore the rest until it is done.'\n"
+        "Bad: 'That anxiety you are carrying is real. Try taking three slow breaths.' — this is too generic, never do this."
     ),
 
     "Depression": (
         "You are a therapist. EXACTLY 2 sentences. DO NOT explain depression. DO NOT say 'it's common'. DO NOT use 'we'.\n"
-        "Sentence 1: Echo back what they said using their own words, with warmth. Use 'I' not 'We'.\n"
-        "Sentence 2: Give ONE tiny physical action they can do in the next 30 seconds.\n"
-        "Good: 'That heavy, low feeling can make everything feel pointless. Put both feet flat on the floor right now and take one slow breath.' "
+        "Sentence 1: Mirror back the SPECIFIC thing they said — use their exact words or situation. Not a general statement about depression.\n"
+        "Sentence 2: Give ONE tiny physical action tied to their specific situation that they can do in the next 30 seconds.\n"
+        "Good: 'Not being able to get out of bed even when you want to is one of the cruelest parts of this. Plant both feet on the floor right now — that is the whole task, nothing else.'\n"
         "Bad: 'It is common to feel low. We are sorry you are feeling this way.'"
     ),
 
     "Suicidal": (
-        "You are a crisis counselor. 2 sentences max.\n"
-        "Example: 'What you are carrying right now is real and heavy. "
-        "Please call or text 988 right now — someone is there to listen.'"
+        "You are a crisis counselor. EXACTLY 2 sentences. You MUST reference the specific words the user used — do not give a generic response.\n"
+        "Sentence 1: Acknowledge their exact statement directly. Name what they said. Make clear you heard them and are taking it seriously. Do NOT say 'what you are carrying' or 'what you are feeling'.\n"
+        "Sentence 2: Tell them to call iCall at 9152987821 RIGHT NOW. Be direct and urgent, not soft.\n"
+        "Good: 'You just said you want to kill yourself — I hear you and I am not going to brush past that. Please do not be alone with this right now.'\n"
+        "Good: 'Saying you will kill yourself is the most important thing you could have told me today — I am glad you said it out loud.'\n"
+        "Bad: 'What you are carrying right now is real and heavy. Please call iCall.' — this ignores what they actually said.\n"
+        "Bad: Any response that does not directly reference that they said they want to kill themselves."
     ),
 
-    "Normal": "You are a friend. 1 sentence reply + 1 follow-up question. No advice.",
+    "Abuse": (
+        "You are a trauma-informed support specialist. EXACTLY 2 sentences. No softening, no minimising.\n"
+        "Sentence 1: Name what happened clearly — touching or harming someone without consent is not okay. Use the word 'not okay' or 'wrong'. Make clear this is NOT their fault.\n"
+        "Sentence 2: Direct them to a specific support line immediately. Do NOT say 'stay safe', 'take care', or 'talk to a trusted friend'.\n"
+        "Good: 'What happened to you is not okay — touching someone without consent is assault, and this is not your fault. "
+        "Please call the One Stop Crisis Centre at 181 or iCall at 9152987821 right now — trained counselors are available.'\n"
+        "Bad: 'It is important to stay safe. You should talk to someone you trust.'"
+    ),
+
+    "Normal": (
+        "You are a friend responding to exactly what they said. 1 sentence reply that references their specific situation + 1 follow-up question.\n"
+        "NEVER give advice. NEVER say 'I understand' or 'that sounds'. Just react naturally to what they said.\n"
+        "Good: 'Rahul sounds like a lot to deal with on a Monday morning — what did he do this time?'\n"
+        "Bad: 'I understand that can be frustrating. How are you feeling about it?'"
+    ),
 }
 
-CRISIS_RESOURCES = """
+CRISIS_RESOURCES = "\n\nCall iCall right now: **9152987821** (free, Mon–Sat 8am–10pm) · Emergency: **112**"
 
----
-**If you're in crisis, please reach out now:**
-- **988 Suicide & Crisis Lifeline** — Call or text **988** (US, 24/7)
-- **Crisis Text Line** — Text **HOME** to **741741**
-- **iCall (India)** — **9152987821**
-- **Vandrevala Foundation (India)** — **1860-2662-345**
-
-*Trained counselors are available right now.*"""
+ABUSE_RESOURCES = "\n\nOne Stop Crisis Centre: **181** (24/7, free) · Police: **100** · Emergency: **112**"
 
 
 # ==============================
@@ -264,7 +295,17 @@ def _build_prefill(user_message: str, category: str, emotions: list) -> str:
     msg = user_message.lower()
 
     if category == "Suicidal":
-        return "What you're feeling right now is real and heavy."
+        # Build a prefill that directly acknowledges their specific words
+        if any(w in msg for w in ["kill myself", "end my life", "want to die", "don't want to live", "kill my self"]):
+            return "You just told me you want to kill yourself — I hear you, and I'm not going to brush past that."
+        if any(w in msg for w in ["disappear", "disappear forever", "everyone better without"]):
+            return "You saying you want to disappear — I'm taking that seriously."
+        if any(w in msg for w in ["suicide", "suicidal"]):
+            return "You're telling me you're having thoughts of suicide — I hear you."
+        return "What you just shared is serious and I'm not going to ignore it."
+
+    if category == "Abuse":
+        return "What happened to you is not okay — this is not your fault."
 
     if category == "Normal":
         return ""
@@ -321,10 +362,8 @@ def _build_prefill(user_message: str, category: str, emotions: list) -> str:
             symptoms.append(description)
 
     if not symptoms:
-        if category == "Depression":
-            return "That heaviness you're feeling right now is real."
-        if category == "Anxiety":
-            return "That anxiety you're carrying right now is real."
+        # No specific keywords found — let the model generate its own specific opener
+        # rather than forcing a generic prefill that leads to generic responses
         return ""
 
     symptom_text = symptoms[0]
@@ -410,8 +449,6 @@ def generate_response(user_message: str, category: str, history: list,
             r"^(?:I )?hear you[.,!]?\s*",
             r"^What you'?r?e? (?:feeling|experiencing|going through) is\s",
             r"^I'?m (?:so |really )?(?:glad|happy|pleased)\b[^.!?]*[.!?]\s*",
-            r"^Hello!?\s*",
-            r"^Hi!?\s*",
             r"^I'?m (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]\s*",
             r"^We(?:'?re| are) (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]\s*",
             r"^We(?:'?re| are) here (?:to help|for you)\b[^.!?]*[.!?]\s*",
@@ -434,6 +471,12 @@ def generate_response(user_message: str, category: str, history: list,
         BANNED = [
             "you're not alone", "you are not alone", "you matter",
             "it's okay to", "take it one", "speak with your",
+            "what you are carrying right now is real and heavy",
+            "what you're carrying right now is real and heavy",
+            "take three slow breaths", "take a slow breath", "take three breaths",
+            "slow breaths in through your nose", "breathe in through your nose",
+            "sit with your feet on the floor, hands resting",
+            "box breathing", "inhale 4 counts",
             "seek professional", "talk to a doctor", "see a doctor",
             "primary care", "healthcare provider", "which would explain",
             "not uncommon", "it can be hard when", "it can be helpful",
@@ -497,6 +540,8 @@ def generate_response(user_message: str, category: str, history: list,
 
         if category == "Suicidal":
             response_text += CRISIS_RESOURCES
+        if category == "Abuse":
+            response_text += ABUSE_RESOURCES
         return response_text
     except requests.exceptions.ConnectionError:
         return "I'm having trouble connecting. Please make sure Ollama is running (`ollama serve`)."
@@ -665,6 +710,41 @@ def health():
         "screening":  "PHQ-9 / GAD-7 enabled",
         "pipeline":   "GoEmotions → PHQ-9/GAD-7 → MindSLM → Safety",
     })
+
+
+# ==============================
+# TTS PROXY
+# ==============================
+ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"  # Sarah - Mature, Reassuring, Confident
+
+@app.route("/api/speak", methods=["POST"])
+def speak():
+    elevenlabs_key = os.getenv("ELEVENLABS_API_KEY", "")
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+    if not elevenlabs_key:
+        return jsonify({"error": "ELEVENLABS_API_KEY not configured"}), 500
+
+    try:
+        r = requests.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}",
+            headers={
+                "xi-api-key": elevenlabs_key,
+                "Content-Type": "application/json",
+            },
+            json={"text": text, "model_id": "eleven_multilingual_v2"},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            print(f"[DEBUG] ElevenLabs response {r.status_code}: {r.text[:300]}")
+            return jsonify({"error": f"ElevenLabs error {r.status_code}"}), 502
+
+        audio_bytes = r.content
+        return Response(audio_bytes, content_type="audio/mpeg")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
 
 
 # ==============================

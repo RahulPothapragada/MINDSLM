@@ -30,7 +30,7 @@ export default function Login() {
   const inputStyle = (field) => ({
     width: '100%',
     background: 'rgba(255,255,255,0.04)',
-    border: `1px solid ${focused === field ? 'rgba(48,209,88,0.40)' : 'rgba(255,255,255,0.08)'}`,
+    border: `1px solid ${focused === field ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.08)'}`,
     borderRadius: 10, padding: '12px 14px',
     fontSize: 14, color: '#f5f5f7',
     outline: 'none', transition: 'border-color 0.15s',
@@ -42,8 +42,8 @@ export default function Login() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: '#30d158', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-            <Brain size={22} color="#000" strokeWidth={2.5} />
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <Brain size={22} color="#000000" strokeWidth={2.5} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: '#f5f5f7', marginBottom: 4 }}>Welcome back</h1>
           <p style={{ fontSize: 13, color: '#636366' }}>Sign in to continue</p>
@@ -105,12 +105,14 @@ export default function Login() {
           <button
             type="submit" disabled={loading}
             style={{
-              width: '100%', background: '#30d158', color: '#000',
-              border: 'none', borderRadius: 10, padding: '13px',
+              width: '100%', background: '#FFFFFF', color: '#000000',
+              border: 'none', borderRadius: 99, padding: '13px',
               fontSize: 14, fontWeight: 600, cursor: loading ? 'wait' : 'pointer',
-              marginTop: 4, opacity: loading ? 0.7 : 1, transition: 'opacity 0.15s',
+              marginTop: 4, opacity: loading ? 0.7 : 1, transition: 'background 0.2s, transform 0.2s',
               letterSpacing: '-0.01em',
             }}
+            onMouseEnter={e => { if(!loading) { e.currentTarget.style.background = '#E5E5E5'; e.currentTarget.style.transform = 'scale(1.02)' } }}
+            onMouseLeave={e => { if(!loading) { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.transform = 'scale(1)' } }}
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>

@@ -34,7 +34,7 @@ export default function Register() {
   const inputStyle = (field) => ({
     width: '100%',
     background: 'rgba(255,255,255,0.04)',
-    border: `1px solid ${focused === field ? 'rgba(48,209,88,0.40)' : 'rgba(255,255,255,0.08)'}`,
+    border: `1px solid ${focused === field ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.08)'}`,
     borderRadius: 10, padding: '12px 14px',
     fontSize: 14, color: '#f5f5f7',
     outline: 'none', transition: 'border-color 0.15s',
@@ -43,8 +43,8 @@ export default function Register() {
   if (done) return (
     <div style={{ minHeight: '100vh', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ textAlign: 'center', maxWidth: 340, animation: 'fadeUp 0.3s ease forwards' }}>
-        <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(48,209,88,0.12)', border: '1px solid rgba(48,209,88,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-          <Mail size={24} color="#30d158" />
+        <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+          <Mail size={24} color="#FFFFFF" />
         </div>
         <h2 style={{ fontSize: 22, fontWeight: 700, color: '#f5f5f7', marginBottom: 10, letterSpacing: '-0.03em' }}>Check your email</h2>
         <p style={{ color: '#636366', fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
@@ -68,8 +68,8 @@ export default function Register() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: '#30d158', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-            <Brain size={22} color="#000" strokeWidth={2.5} />
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <Brain size={22} color="#000000" strokeWidth={2.5} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.03em', color: '#f5f5f7', marginBottom: 4 }}>Create account</h1>
           <p style={{ fontSize: 13, color: '#636366' }}>Free. No credit card required.</p>
@@ -129,12 +129,14 @@ export default function Register() {
           )}
 
           <button type="submit" disabled={loading} style={{
-            width: '100%', background: '#30d158', color: '#000',
-            border: 'none', borderRadius: 10, padding: '13px',
+            width: '100%', background: '#FFFFFF', color: '#000000',
+            border: 'none', borderRadius: 99, padding: '13px',
             fontSize: 14, fontWeight: 600, cursor: loading ? 'wait' : 'pointer',
-            marginTop: 4, opacity: loading ? 0.7 : 1, transition: 'opacity 0.15s',
+            marginTop: 4, opacity: loading ? 0.7 : 1, transition: 'background 0.2s, transform 0.2s',
             letterSpacing: '-0.01em',
-          }}>
+          }}
+          onMouseEnter={e => { if(!loading) { e.currentTarget.style.background = '#E5E5E5'; e.currentTarget.style.transform = 'scale(1.02)' } }}
+          onMouseLeave={e => { if(!loading) { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.transform = 'scale(1)' } }}>
             {loading ? 'Creating account…' : 'Create account'}
           </button>
         </form>

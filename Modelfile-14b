@@ -1,0 +1,17 @@
+FROM ./mindslm-14b-q4km.gguf
+
+PARAMETER temperature 0.72
+PARAMETER top_p 0.90
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.05
+PARAMETER num_ctx 4096
+
+TEMPLATE """{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{- end }}
+<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+{{ .Response }}<|im_end|>"""
+
+SYSTEM """You are MindSLM, a compassionate mental health support assistant trained on real therapist conversations. Provide empathetic, specific, clinically-aware responses. Keep replies to 2-3 sentences. Be direct, not generic. Ask one focused follow-up question. Never claim to be a replacement for professional help. In crisis situations, direct users to call 988."""

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Brain, LayoutDashboard, MessageCircle, BarChart2, Wind, LogOut } from 'lucide-react'
+import { FloatingPaths } from './ui/background-paths'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -35,10 +36,10 @@ export default function Layout({ user, children }) {
       }}>
 
         {/* Logo */}
-        <div style={{ height: 56, display: 'flex', alignItems: 'center', padding: '0 18px', gap: 10, flexShrink: 0 }}>
+        <div onClick={() => navigate('/')} style={{ height: 56, display: 'flex', alignItems: 'center', padding: '0 18px', gap: 10, flexShrink: 0, cursor: 'pointer' }}>
           <div style={{
             width: 28, height: 28, borderRadius: 8,
-            background: '#30d158',
+            background: '#ffffff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
           }}>
@@ -76,12 +77,12 @@ export default function Layout({ user, children }) {
                   {isActive && (
                     <span style={{
                       position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: 2, height: 16, background: '#30d158', borderRadius: 99,
+                      width: 2, height: 16, background: '#ffffff', borderRadius: 99,
                     }} />
                   )}
                   <n.icon
                     size={15}
-                    color={isActive ? '#30d158' : hoveredNav === n.to ? '#aeaeb2' : '#636366'}
+                    color={isActive ? '#ffffff' : hoveredNav === n.to ? '#aeaeb2' : '#636366'}
                     strokeWidth={isActive ? 2.2 : 1.8}
                   />
                   {n.label}
@@ -102,9 +103,9 @@ export default function Layout({ user, children }) {
             : (
               <div style={{
                 width: 28, height: 28, borderRadius: '50%',
-                background: 'rgba(48,209,88,0.15)',
+                background: 'rgba(255,255,255,0.15)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 11, fontWeight: 700, color: '#30d158', flexShrink: 0,
+                fontSize: 11, fontWeight: 700, color: '#ffffff', flexShrink: 0,
               }}>
                 {initials}
               </div>
@@ -126,10 +127,20 @@ export default function Layout({ user, children }) {
         </div>
       </aside>
 
-      {/* Main */}
-      <main style={{ flex: 1, overflowY: 'auto', background: '#000' }}>
-        {children}
-      </main>
+      {/* Main Container */}
+      <div style={{ flex: 1, position: 'relative', background: '#000', overflow: 'hidden' }}>
+        
+        {/* Fixed Background */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0, pointerEvents: 'none' }}>
+          <FloatingPaths position={1} />
+          <FloatingPaths position={-1} />
+        </div>
+        
+        {/* Scrollable Content */}
+        <main style={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', overflowY: 'auto' }}>
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
