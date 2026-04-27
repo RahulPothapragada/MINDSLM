@@ -40,6 +40,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/"          element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
+        <Route path="/landing"   element={<Landing />} />
         <Route path="/login"     element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
         <Route path="/register"  element={user ? <Navigate to="/dashboard" replace /> : <Register />} />
         <Route path="/dashboard" element={<ProtectedRoute user={user}><Dashboard user={user} /></ProtectedRoute>} />

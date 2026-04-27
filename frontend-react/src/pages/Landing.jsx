@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Brain, Activity, Database, Lock, ShieldCheck, Plus, Sparkles } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import RobotAvatar from '../components/RobotAvatar'
+import { SplineScene } from '../components/SplineScene'
 import { Spotlight } from '../components/Spotlight'
 
 const faqs = [
@@ -31,6 +31,12 @@ const faqs = [
 export default function Landing() {
   const navigate = useNavigate()
   const [openFaq, setOpenFaq] = useState(null)
+  const [novaReady, setNovaReady] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setNovaReady(true), 1000)
+    return () => clearTimeout(t)
+  }, [])
 
   return (
     <div style={{ width: '100%', overflowX: 'hidden', background: '#000000', color: '#FFFFFF', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
@@ -45,12 +51,7 @@ export default function Landing() {
       }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px', height: 72, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid #222222', borderRadius: 99, padding: '6px 20px 6px 6px', background: '#0A0A0A' }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Brain size={16} color="#000000" />
-            </div>
-            <span style={{ fontWeight: 600, fontSize: 14, color: '#FFFFFF' }}>MindSLM</span>
-          </div>
+          <span style={{ fontWeight: 800, fontSize: 20, color: '#FFFFFF', letterSpacing: '-0.04em' }}>MindSLM</span>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
             <button
@@ -101,8 +102,7 @@ export default function Landing() {
         </motion.div>
 
         <div style={{ flex: '1 1 500px', height: 600, position: 'relative', animation: 'robotZoomIn 1s cubic-bezier(0.16,1,0.3,1) forwards' }}>
-          <Spotlight style={{ top: '-20%', left: '10%' }} />
-          <RobotAvatar />
+          {novaReady && <SplineScene scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode" />}
         </div>
       </section>
 
@@ -113,59 +113,87 @@ export default function Landing() {
           {/* Large Card - 8 cols */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
-            style={{ gridColumn: 'span 8', background: '#0A0A0A', border: '1px solid #222222', borderRadius: 24, padding: 48, position: 'relative', overflow: 'hidden', minHeight: 380, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
+            style={{ gridColumn: 'span 8', position: 'relative', overflow: 'hidden', padding: 1, borderRadius: 24, minHeight: 380, background: '#222222' }}
           >
-            <div style={{ position: 'absolute', top: 48, right: 48, width: 48, height: 48, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Activity size={20} color="#FFFFFF" />
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', width: '200vw', height: '200vw',
+              background: 'conic-gradient(from 0deg, transparent 0 340deg, rgba(255,255,255,0.7) 360deg)',
+              animation: 'spin1 6s linear infinite', zIndex: 0
+            }} />
+            <div style={{ background: '#0A0A0A', borderRadius: 23, padding: 48, position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', boxSizing: 'border-box' }}>
+              <div style={{ position: 'absolute', top: 48, right: 48, width: 48, height: 48, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Activity size={20} color="#FFFFFF" />
+              </div>
+              <h2 style={{ fontSize: 40, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 16 }}>Built for empathy</h2>
+              <p style={{ fontSize: 16, color: '#888888', maxWidth: 440, lineHeight: 1.6 }}>
+                A dynamic engine powered by GoEmotions determines eligibility globally. Real-time emotion extraction ensures responses adapt to exactly how you are feeling the second you type it. No generic platitudes.
+              </p>
             </div>
-            <h2 style={{ fontSize: 40, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 16 }}>Built for empathy</h2>
-            <p style={{ fontSize: 16, color: '#888888', maxWidth: 440, lineHeight: 1.6 }}>
-              A dynamic engine powered by GoEmotions determines eligibility globally. Real-time emotion extraction ensures responses adapt to exactly how you are feeling the second you type it. No generic platitudes.
-            </p>
           </motion.div>
 
           {/* Medium Card - 4 cols */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
-            style={{ gridColumn: 'span 4', background: '#0A0A0A', border: '1px solid #222222', borderRadius: 24, padding: 40, minHeight: 380 }}
+            style={{ gridColumn: 'span 4', position: 'relative', overflow: 'hidden', padding: 1, borderRadius: 24, minHeight: 380, background: '#222222' }}
           >
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-              <Database size={18} color="#FFFFFF" />
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', width: '200vw', height: '200vw',
+              background: 'conic-gradient(from 0deg, transparent 0 340deg, rgba(136,136,136,0.8) 360deg)',
+              animation: 'spin2 4s linear infinite', zIndex: 0
+            }} />
+            <div style={{ background: '#0A0A0A', borderRadius: 23, padding: 40, position: 'relative', zIndex: 1, height: '100%', boxSizing: 'border-box' }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                <Database size={18} color="#FFFFFF" />
+              </div>
+              <h3 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 16 }}>Powered by signals</h3>
+              <p style={{ fontSize: 15, color: '#888888', lineHeight: 1.6 }}>
+                Clinical experience drives all events cleanly. We use retrieval-augmented generation across thousands of real therapist interactions to build contextual prompt responses.
+              </p>
             </div>
-            <h3 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 16 }}>Powered by signals</h3>
-            <p style={{ fontSize: 15, color: '#888888', lineHeight: 1.6 }}>
-              Clinical experience drives all events cleanly. We use retrieval-augmented generation across thousands of real therapist interactions to build contextual prompt responses.
-            </p>
           </motion.div>
 
           {/* Small Card 1 - 4 cols */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
-            style={{ gridColumn: 'span 4', background: '#0A0A0A', border: '1px solid #222222', borderRadius: 24, padding: 40 }}
+            style={{ gridColumn: 'span 4', position: 'relative', overflow: 'hidden', padding: 1, borderRadius: 24, background: '#222222' }}
           >
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-              <ShieldCheck size={18} color="#FFFFFF" />
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', width: '200vw', height: '200vw',
+              background: 'conic-gradient(from 0deg, transparent 0 340deg, rgba(255,255,255,0.6) 360deg)',
+              animation: 'spin3 5s linear infinite', zIndex: 0
+            }} />
+            <div style={{ background: '#0A0A0A', borderRadius: 23, padding: 40, position: 'relative', zIndex: 1, height: '100%', boxSizing: 'border-box' }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                <ShieldCheck size={18} color="#FFFFFF" />
+              </div>
+              <h3 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>Designed for clarity</h3>
+              <p style={{ fontSize: 14, color: '#888888', lineHeight: 1.6 }}>
+                Simple screening windows. PHQ-9 and GAD-7 assessments happen organically without forms.
+              </p>
             </div>
-            <h3 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>Designed for clarity</h3>
-            <p style={{ fontSize: 14, color: '#888888', lineHeight: 1.6 }}>
-              Simple screening windows. PHQ-9 and GAD-7 assessments happen organically without forms.
-            </p>
           </motion.div>
 
           {/* Small Card 2 - 8 cols */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4 }}
-            style={{ gridColumn: 'span 8', background: '#0A0A0A', border: '1px solid #222222', borderRadius: 24, padding: 40, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+            style={{ gridColumn: 'span 8', position: 'relative', overflow: 'hidden', padding: 1, borderRadius: 24, background: '#222222' }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Lock size={16} color="#000000" />
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', width: '200vw', height: '200vw',
+              background: 'conic-gradient(from 0deg, transparent 0 340deg, rgba(200,200,200,0.8) 360deg)',
+              animation: 'spin4 7s linear infinite', zIndex: 0
+            }} />
+            <div style={{ background: '#0A0A0A', borderRadius: 23, padding: 40, position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Lock size={16} color="#000000" />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.05em', color: '#FFFFFF' }}>PRIVACY MATRIX</span>
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.05em', color: '#FFFFFF' }}>PRIVACY MATRIX</span>
+              <h3 style={{ fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', maxWidth: 500, lineHeight: 1.2 }}>
+                Continuous monitoring infrastructure validating security 24/7.
+              </h3>
             </div>
-            <h3 style={{ fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', maxWidth: 500, lineHeight: 1.2 }}>
-              Continuous monitoring infrastructure validating security 24/7.
-            </h3>
           </motion.div>
 
         </div>
@@ -193,13 +221,20 @@ export default function Landing() {
             <motion.div 
               key={i}
               initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6, delay: i * 0.1 }}
-              style={{ background: '#0A0A0A', border: '1px solid #222222', borderRadius: 24, padding: 40 }}
+              style={{ position: 'relative', overflow: 'hidden', padding: 1, borderRadius: 24, background: '#222222' }}
             >
-              <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-                <f.icon size={18} color="#FFFFFF" />
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%', width: '200vw', height: '200vw',
+                background: `conic-gradient(from 0deg, transparent 0 340deg, rgba(255,255,255,0.${6 + i}) 360deg)`,
+                animation: `spin${(i % 4) + 1} ${4 + i}s linear infinite`, zIndex: 0
+              }} />
+              <div style={{ background: '#0A0A0A', borderRadius: 23, padding: 40, position: 'relative', zIndex: 1, height: '100%', boxSizing: 'border-box' }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#111111', border: '1px solid #333333', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                  <f.icon size={18} color="#FFFFFF" />
+                </div>
+                <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>{f.title}</h3>
+                <p style={{ fontSize: 15, color: '#888888', lineHeight: 1.6 }}>{f.text}</p>
               </div>
-              <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>{f.title}</h3>
-              <p style={{ fontSize: 15, color: '#888888', lineHeight: 1.6 }}>{f.text}</p>
             </motion.div>
           ))}
         </div>
@@ -270,6 +305,26 @@ export default function Landing() {
         @keyframes robotZoomIn {
           0%   { opacity: 0; transform: scale(0.6) translateY(40px); }
           100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes novaFadeIn {
+          0%   { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes spin1 {
+          0% { transform: translate(-50%, -50%) rotate(0deg); }
+          100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        @keyframes spin2 {
+          0% { transform: translate(-50%, -50%) rotate(0deg); }
+          100% { transform: translate(-50%, -50%) rotate(-360deg); }
+        }
+        @keyframes spin3 {
+          0% { transform: translate(-50%, -50%) rotate(180deg); }
+          100% { transform: translate(-50%, -50%) rotate(540deg); }
+        }
+        @keyframes spin4 {
+          0% { transform: translate(-50%, -50%) rotate(90deg); }
+          100% { transform: translate(-50%, -50%) rotate(-270deg); }
         }
       `}</style>
     </div>
