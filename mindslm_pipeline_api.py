@@ -33,10 +33,12 @@ CORS(app)
 # ==============================
 # CONFIGURATION
 # ==============================
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
-MODEL_NAME = os.getenv("MODEL_NAME", "mindslm-14b")
-MODEL_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
-API_PORT   = int(os.getenv("API_PORT", "8080"))
+OLLAMA_URL   = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+MODEL_NAME   = os.getenv("MODEL_NAME", "mindslm-14b")
+MODEL_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+API_PORT     = int(os.getenv("API_PORT", "8080"))
+GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.5-flash"
 
 # ==============================
 # STAGE 1: GoEmotions CLASSIFIER (primary)
@@ -369,6 +371,71 @@ def _build_prefill(user_message: str, category: str, emotions: list) -> str:
     symptom_text = symptoms[0]
     return f"That {symptom_text} you're carrying right now is real."
 
+
+def _generate_via_gemini(messages: list, category: str, prefill: str) -> str:
+    """Call Google Gemini as a fallback when Ollama is unavailable.
+    Converts Ollama-style messages array to Gemini generateContent format.
+    Applies the same post-processing as the Ollama path.
+    """
+    import re
+
+    system_parts = [m["content"] for m in messages if m["role"] == "system"]
+    turns = [m for m in messages if m["role"] in ("user", "assistant")]
+
+    gemini_contents = []
+    for t in turns:
+        role = "model" if t["role"] == "assistant" else "user"
+        gemini_contents.append({"role": role, "parts": [{"text": t["content"]}]})
+
+    payload = {
+        "system_instruction": {"parts": [{"text": "\n\n".join(system_parts)}]},
+        "contents": gemini_contents,
+        "generationConfig": {
+            "temperature": 0.7,
+            "topP": 0.9,
+            "maxOutputTokens": 150,
+        }
+    }
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_KEY}"
+    )
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+        candidates = resp.json().get("candidates", [])
+        if not candidates:
+            return "I'm having difficulty generating a response right now. Please try again."
+        response_text = candidates[0]["content"]["parts"][0]["text"].strip()
+    except Exception as e:
+        print(f"  ⚠️  Gemini fallback also failed: {e}")
+        return "I'm having difficulty connecting right now. Please try again shortly."
+
+    # Prepend prefill
+    if prefill and not response_text.startswith(prefill):
+        response_text = prefill + " " + response_text
+
+    # Strip fake conversation markers
+    for marker in ["User:", "MindSLM:", "Therapist:", "Assistant:"]:
+        if marker in response_text:
+            response_text = response_text[:response_text.index(marker)].strip()
+
+    # Truncate to 2 sentences
+    sentences = re.split(r'(?<=[.!?])\s*', response_text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if len(sentences) > 2:
+        response_text = " ".join(sentences[:2])
+
+    if category == "Suicidal":
+        response_text += CRISIS_RESOURCES
+    if category == "Abuse":
+        response_text += ABUSE_RESOURCES
+
+    print(f"  ✅ Gemini fallback used for category: {category}")
+    return response_text
+
+
 def generate_response(user_message: str, category: str, history: list,
                       emotions: list, screening_prompt: str = "",
                       session_id: str = "default") -> str:
@@ -395,6 +462,11 @@ def generate_response(user_message: str, category: str, history: list,
     memory_context = format_memory_context(memories)
     if memory_context:
         system_prompt += memory_context
+
+    # ── Global User Profile (Behavioral Patterns) ──
+    profile = db.get_user_profile("default")
+    if profile and profile.get("situational_context") and profile.get("behavioral_patterns"):
+        system_prompt += f"\n\nGlobal User Context:\nSituation: {profile['situational_context']}\nBehavioral Patterns: {profile['behavioral_patterns']}\nKeep this broad context in mind, but always respond directly to their current message."
 
     # Inject screening instructions
     if screening_prompt:
@@ -423,7 +495,11 @@ def generate_response(user_message: str, category: str, history: list,
     try:
         resp = requests.post(OLLAMA_URL, json=payload, timeout=90)
         resp.raise_for_status()
-        response_text = resp.json().get("message", {}).get("content", "").strip()
+        raw_json = resp.json()
+        # If Ollama returns an error field (e.g. model not found), fall through to Gemini
+        if raw_json.get("error"):
+            raise requests.exceptions.ConnectionError(raw_json["error"])
+        response_text = raw_json.get("message", {}).get("content", "").strip()
 
         # Prepend the prefill so the full response reads naturally
         if prefill and not response_text.startswith(prefill):
@@ -543,11 +619,18 @@ def generate_response(user_message: str, category: str, history: list,
         if category == "Abuse":
             response_text += ABUSE_RESOURCES
         return response_text
-    except requests.exceptions.ConnectionError:
+
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        # Ollama unavailable — try Gemini fallback
+        if GEMINI_KEY:
+            print(f"  ⚠️  Ollama unavailable ({e}), falling back to Gemini...")
+            return _generate_via_gemini(messages, category, prefill)
         return "I'm having trouble connecting. Please make sure Ollama is running (`ollama serve`)."
-    except requests.exceptions.Timeout:
-        return "That took longer than expected. Please try again."
+
     except requests.exceptions.RequestException as e:
+        if GEMINI_KEY:
+            print(f"  ⚠️  Ollama error ({e}), falling back to Gemini...")
+            return _generate_via_gemini(messages, category, prefill)
         return f"Something went wrong: {str(e)}"
 
 
@@ -686,6 +769,167 @@ def delete_session(session_id):
 @app.route("/api/timeline", methods=["GET"])
 def timeline():
     return jsonify(db.get_timeline())
+
+
+@app.route("/api/heatmap", methods=["GET"])
+def heatmap():
+    """Return real session activity aggregated by day-of-week × 3-hour bucket.
+    Also returns summary stats computed from actual data.
+    """
+    import sqlite3
+    from collections import defaultdict
+
+    conn = db.get_db()
+
+    # Pull all sessions that have at least one message
+    rows = conn.execute(
+        "SELECT id, created_at, phq9_score, gad7_score, severity, message_count FROM sessions WHERE message_count > 0"
+    ).fetchall()
+    conn.close()
+
+    sessions = [dict(r) for r in rows]
+
+    # Day labels (0=Mon … 6=Sun in Python's weekday())
+    DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    HOUR_BUCKETS = [0, 3, 6, 9, 12, 15, 18, 21]  # start of each 3-h bucket
+
+    # grid[day_idx][bucket_idx] = count
+    grid = defaultdict(lambda: defaultdict(int))
+
+    total_sessions = len(sessions)
+    severe_count = 0
+    phq9_scores = []
+
+    for s in sessions:
+        # Parse timestamp
+        ts_str = s.get("created_at", "")
+        try:
+            from datetime import datetime as dt
+            # SQLite stores as "YYYY-MM-DD HH:MM:SS"
+            ts = dt.strptime(ts_str[:19], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+
+        day_idx = ts.weekday()  # 0=Mon
+        hour = ts.hour
+        # Map to nearest lower bucket
+        bucket_idx = max(i for i, b in enumerate(HOUR_BUCKETS) if b <= hour)
+        grid[day_idx][bucket_idx] += 1
+
+        if s.get("severity") in ("severe", "moderately severe"):
+            severe_count += 1
+        if s.get("phq9_score") is not None:
+            phq9_scores.append(s["phq9_score"])
+
+    # Build the structured response mirroring the heatmap shape
+    heatmap_data = []
+    for day_idx, day_label in enumerate(DAY_LABELS):
+        day_row = []
+        for bucket_idx, bucket_hour in enumerate(HOUR_BUCKETS):
+            day_row.append({
+                "key": f"{bucket_hour:02d}h",
+                "data": grid[day_idx][bucket_idx]
+            })
+        heatmap_data.append({"key": day_label, "data": day_row})
+
+    avg_phq9 = round(sum(phq9_scores) / len(phq9_scores), 1) if phq9_scores else None
+
+    return jsonify({
+        "heatmap": heatmap_data,
+        "stats": {
+            "total_sessions": total_sessions,
+            "severe_count": severe_count,
+            "avg_phq9": avg_phq9,
+        }
+    })
+
+
+@app.route("/api/user/profile", methods=["GET"])
+def get_user_profile_api():
+    """Extracts and returns the user's situational context and behavioral patterns."""
+    force_refresh = request.args.get("refresh", "false").lower() == "true"
+    
+    profile = db.get_user_profile("default")
+    if profile and not force_refresh:
+        return jsonify(profile)
+
+    messages = db.get_recent_user_messages("default", limit=50)
+    if not messages:
+        return jsonify({
+            "situational_context": "No sufficient data yet to determine a situation.",
+            "behavioral_patterns": "No sufficient data yet to determine patterns."
+        })
+        
+    history_text = "\n".join([f"- {m['content']}" for m in messages])
+    
+    prompt = f"""You are a clinical assistant analyzing a user's chat history across multiple sessions.
+Read the user's messages and extract their overarching situation and behavioral patterns.
+Be concise and clinical. Format your response exactly as two parts separated by '|||'. Do not include markdown headers.
+Example output format:
+User is currently dealing with high stress at work due to an overbearing boss. They are feeling overwhelmed.
+|||
+User tends to isolate themselves when stressed. They frequently mention sleep disturbances and negative self-talk.
+
+User Messages:
+{history_text}
+"""
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        "options": {
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "num_predict": 200
+        }
+    }
+    
+    try:
+        resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        resp.raise_for_status()
+        output = resp.json().get("message", {}).get("content", "").strip()
+        parts = output.split("|||")
+        if len(parts) >= 2:
+            sit_context = parts[0].strip()
+            beh_patterns = parts[1].strip()
+            db.upsert_user_profile("default", sit_context, beh_patterns)
+            return jsonify({"situational_context": sit_context, "behavioral_patterns": beh_patterns})
+        else:
+            # Fallback if model fails to format
+            db.upsert_user_profile("default", output, "Behavioral analysis integrated above.")
+            return jsonify({"situational_context": output, "behavioral_patterns": "Behavioral analysis integrated above."})
+    except Exception as e:
+        print(f"Profile generation via Ollama failed: {e}. Trying Gemini...")
+        # Gemini fallback for profile generation
+        if GEMINI_KEY:
+            try:
+                gem_payload = {
+                    "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 300}
+                }
+                gem_url = (
+                    f"https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{GEMINI_MODEL}:generateContent?key={GEMINI_KEY}"
+                )
+                gr = requests.post(gem_url, json=gem_payload, timeout=30)
+                gr.raise_for_status()
+                output = gr.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                parts = output.split("|||")
+                if len(parts) >= 2:
+                    sit_context = parts[0].strip()
+                    beh_patterns = parts[1].strip()
+                else:
+                    sit_context = output
+                    beh_patterns = "Behavioral analysis integrated above."
+                db.upsert_user_profile("default", sit_context, beh_patterns)
+                return jsonify({"situational_context": sit_context, "behavioral_patterns": beh_patterns})
+            except Exception as gem_e:
+                print(f"Gemini profile generation also failed: {gem_e}")
+
+        return jsonify({
+            "situational_context": "Analysis temporarily unavailable.",
+            "behavioral_patterns": "Analysis temporarily unavailable."
+        })
 
 
 @app.route("/api/health", methods=["GET"])

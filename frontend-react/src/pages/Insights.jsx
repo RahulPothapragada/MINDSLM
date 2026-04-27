@@ -1,6 +1,32 @@
-import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { X, BrainCircuit, RefreshCw } from 'lucide-react'
 import Layout from '../components/Layout'
+import IncidentHeatmapReportCard from '../components/ui/heat-map-xl'
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, info: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    this.setState({ info });
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 20, color: 'red', background: '#fff' }}>
+          <h2>Component Error: {this.state.error?.message}</h2>
+          <pre>{this.state.error?.stack}</pre>
+          <pre>{this.state.info?.componentStack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
@@ -111,6 +137,14 @@ function SessionDrawer({ session, onClose }) {
               ))}
             </div>
           )}
+
+          {/* Conversation Summary */}
+          <div style={{ marginTop: 16, padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: '#aeaeb2', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Conversation Summary</p>
+            <p style={{ fontSize: 13, color: '#e5e5e7', lineHeight: 1.5 }}>
+              {session.summary || `This check-in focused on ${session.top_emotions?.length > 0 ? session.top_emotions.join(', ') : 'general topics'}. (Backend summary pending API update)`}
+            </p>
+          </div>
         </div>
 
         {/* Messages */}
@@ -185,8 +219,19 @@ function SessionDrawer({ session, onClose }) {
 export default function Insights({ user }) {
   const [timeline, setTimeline]         = useState([])
   const [selectedSession, setSelected]  = useState(null)
+  const [profile, setProfile]           = useState(null)
+  const [loadingProfile, setLoadingProfile] = useState(false)
+
+  const fetchProfile = (refresh = false) => {
+    setLoadingProfile(true)
+    fetch(`${API}/api/user/profile${refresh ? '?refresh=true' : ''}`)
+      .then(r => r.json())
+      .then(d => { setProfile(d); setLoadingProfile(false) })
+      .catch(() => setLoadingProfile(false))
+  }
 
   useEffect(() => {
+    fetchProfile()
     fetch(`${API}/api/timeline`)
       .then(r => r.json())
       .then(d => setTimeline(Array.isArray(d) ? d : []))
@@ -202,6 +247,43 @@ export default function Insights({ user }) {
         <div style={{ marginBottom: 36 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.04em', color: '#f5f5f7', marginBottom: 4 }}>Insights</h1>
           <p style={{ fontSize: 14, color: '#636366' }}>Your mental health trends over time</p>
+        </div>
+
+        {/* Heatmap Section */}
+        <div style={{ marginBottom: 36, display: 'flex', justifyContent: 'center' }}>
+          <ErrorBoundary>
+            <IncidentHeatmapReportCard />
+          </ErrorBoundary>
+        </div>
+
+        {/* Behavioral Profile Section */}
+        <div style={{ marginBottom: 36 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <BrainCircuit size={20} color="#bf5af2" />
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: '#f5f5f7' }}>Behavioral Analysis</h2>
+            </div>
+            <button 
+              onClick={() => fetchProfile(true)}
+              disabled={loadingProfile}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#aeaeb2', padding: '6px 12px', borderRadius: 8, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: loadingProfile ? 'wait' : 'pointer' }}
+            >
+              <RefreshCw size={14} style={{ animation: loadingProfile ? 'spin 1s linear infinite' : 'none' }} />
+              {loadingProfile ? 'Analyzing...' : 'Refresh Analysis'}
+            </button>
+          </div>
+          
+          <div style={{ background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: '#636366', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Situational Context</p>
+              <p style={{ fontSize: 14, color: '#e5e5e7', lineHeight: 1.6 }}>{profile?.situational_context || 'Loading...'}</p>
+            </div>
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: '#636366', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Behavioral Patterns</p>
+              <p style={{ fontSize: 14, color: '#e5e5e7', lineHeight: 1.6 }}>{profile?.behavioral_patterns || 'Loading...'}</p>
+            </div>
+          </div>
         </div>
 
         {timeline.length === 0 ? (

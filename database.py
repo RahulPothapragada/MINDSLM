@@ -50,6 +50,13 @@ def init_db():
             current_q   INTEGER DEFAULT 0,
             completed   INTEGER DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            user_id     TEXT PRIMARY KEY,
+            situational_context TEXT,
+            behavioral_patterns TEXT,
+            updated_at  TEXT DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
     conn.close()
@@ -130,6 +137,23 @@ def get_messages(session_id: str, limit: int = 50) -> list[dict]:
         results.append(d)
     return results
 
+def get_recent_user_messages(user_id: str = "default", limit: int = 100) -> list[dict]:
+    """Get the most recent messages from the user across all sessions to generate a behavioral profile."""
+    conn = get_db()
+    # We join with sessions to ensure we only get messages for this user (if multi-user supported later)
+    rows = conn.execute(
+        """SELECT m.*, s.name as session_name 
+           FROM messages m 
+           JOIN sessions s ON m.session_id = s.id 
+           WHERE m.role = 'user' 
+           ORDER BY m.timestamp DESC LIMIT ?""",
+        (limit,)
+    ).fetchall()
+    conn.close()
+    # Return chronologically (oldest first)
+    return [dict(r) for r in reversed(rows)]
+
+
 
 # ── Screening ──
 
@@ -179,6 +203,29 @@ def get_timeline(limit: int = 30) -> list[dict]:
             d["top_emotions"] = json.loads(d["top_emotions"])
         results.append(d)
     return results
+
+
+# ── User Profiles ──
+
+def get_user_profile(user_id: str = "default") -> dict | None:
+    conn = get_db()
+    row = conn.execute("SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def upsert_user_profile(user_id: str, situational_context: str, behavioral_patterns: str):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO user_profiles (user_id, situational_context, behavioral_patterns, updated_at)
+           VALUES (?, ?, ?, datetime('now'))
+           ON CONFLICT(user_id) DO UPDATE SET
+             situational_context = excluded.situational_context,
+             behavioral_patterns = excluded.behavioral_patterns,
+             updated_at = datetime('now')""",
+        (user_id, situational_context, behavioral_patterns)
+    )
+    conn.commit()
+    conn.close()
 
 
 # Init on import
