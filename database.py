@@ -73,7 +73,7 @@ def create_session(session_id: str, name: str = "Check-In") -> dict:
     conn.commit()
     row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
     conn.close()
-    return dict(row)
+    return dict(row) if row else {"id": session_id, "name": name, "message_count": 0}
 
 def update_session(session_id: str, **kwargs):
     conn = get_db()

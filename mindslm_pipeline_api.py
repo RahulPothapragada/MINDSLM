@@ -678,7 +678,9 @@ def chat():
     """Full pipeline: Emotions → Classify → Screen → Generate → Safety"""
     data = request.get_json(silent=True) or {}
     user_message = data.get("message", "").strip()
-    session_id   = data.get("session_id", "default")
+    # Coerce null/empty session_id to a default — `.get(..., "default")` only
+    # applies when the key is absent, not when it's present and None.
+    session_id   = data.get("session_id") or "default"
 
     if not user_message:
         return jsonify({"error": "Empty message"}), 400
