@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Brain, LayoutDashboard, MessageCircle, BarChart2, Wind, LogOut } from 'lucide-react'
+import { LayoutDashboard, MessageCircle, BarChart2, Wind, LogOut } from 'lucide-react'
 import { FloatingPaths } from './ui/background-paths'
 
 const navItems = [
@@ -36,16 +36,8 @@ export default function Layout({ user, children }) {
       }}>
 
         {/* Logo */}
-        <div onClick={() => navigate('/')} style={{ height: 56, display: 'flex', alignItems: 'center', padding: '0 18px', gap: 10, flexShrink: 0, cursor: 'pointer' }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: 8,
-            background: '#ffffff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <Brain size={14} color="#000" strokeWidth={2.5} />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 15, color: '#f5f5f7', letterSpacing: '-0.03em' }}>MindSLM</span>
+        <div onClick={() => navigate('/landing')} style={{ height: 56, display: 'flex', alignItems: 'center', padding: '0 18px', flexShrink: 0, cursor: 'pointer' }}>
+          <span style={{ fontWeight: 800, fontSize: 18, color: '#f5f5f7', letterSpacing: '-0.04em' }}>MindSLM</span>
         </div>
 
         {/* Nav */}

@@ -10,8 +10,8 @@ const API          = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 const SPLINE_SCENE = 'https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode'
 
 const AVATARS = [
-  { id: 'atlas', label: 'Atlas', desc: 'Sleek & precise' },
   { id: 'nova',  label: 'Nova',  desc: '3D interactive' },
+  { id: 'atlas', label: 'Atlas', desc: 'Sleek & precise' },
 ]
 
 const CLS_COLORS = {
@@ -124,7 +124,7 @@ export default function Chat({ user }) {
   const [showChatOverlay, setShowChatOverlay] = useState(false)
   const [lastEmotions, setLastEmotions]       = useState([])
   const [lastResponse, setLastResponse]       = useState('')
-  const [selectedAvatar, setSelectedAvatar]   = useState(() => localStorage.getItem('mindslm_avatar') || 'atlas')
+  const [selectedAvatar, setSelectedAvatar]   = useState(() => localStorage.getItem('mindslm_avatar') || 'nova')
 
   const messagesRef    = useRef(null)
   const overlayRef     = useRef(null)
@@ -301,24 +301,6 @@ export default function Chat({ user }) {
 
             {/* Controls — always pinned to bottom of the left panel */}
             <div style={{ flexShrink: 0, paddingTop: 20 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setShowChatOverlay(v => !v)} style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10,
-                  background: showChatOverlay ? 'rgba(48,209,88,0.12)' : 'rgba(255,255,255,0.04)',
-                  border: showChatOverlay ? '1px solid rgba(48,209,88,0.25)' : '1px solid rgba(255,255,255,0.10)',
-                  color: showChatOverlay ? '#30d158' : '#a3a3a3', fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                }}>
-                  {showChatOverlay ? <PanelRightClose size={12} /> : <PanelRightOpen size={12} />}
-                  {showChatOverlay ? 'Hide chat' : 'Show chat'}
-                </button>
-                <button onClick={newSession} style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10,
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)',
-                  color: '#a3a3a3', fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                }}>
-                  <Plus size={12} /> New
-                </button>
-              </div>
 
               {/* Avatar picker */}
               <div style={{ marginTop: 16 }}>
@@ -344,6 +326,9 @@ export default function Chat({ user }) {
           <div style={{
             flex: 1, position: 'relative',
             animation: 'robotZoomIn 1s cubic-bezier(0.16,1,0.3,1) forwards',
+            opacity: showChatOverlay ? 0 : 1,
+            transition: 'opacity 0.4s ease',
+            pointerEvents: showChatOverlay ? 'none' : 'auto',
           }}>
             {selectedAvatar === 'nova'
               ? <SplineScene scene={SPLINE_SCENE} />
@@ -363,23 +348,38 @@ export default function Chat({ user }) {
             </div>
           )}
 
-          {/* Chat overlay — slides in from right edge */}
+          {/* Chat drawer — slides up from bottom */}
           <div style={{
-            position: 'absolute', top: 0, right: 0, bottom: 0,
-            width: showChatOverlay ? 340 : 0, overflow: 'hidden',
-            transition: 'width 0.4s cubic-bezier(0.4,0,0.2,1)', zIndex: 40,
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            height: showChatOverlay ? '65%' : 0,
+            overflow: 'hidden',
+            transition: 'height 0.4s cubic-bezier(0.4,0,0.2,1)',
+            zIndex: 40,
           }}>
             <div style={{
-              width: 340, height: '100%',
-              background: 'rgba(10,10,10,0.8)', backdropFilter: 'blur(24px)',
-              borderLeft: '1px solid rgba(255,255,255,0.08)',
-              display: 'flex', flexDirection: 'column', paddingTop: 16,
+              width: '100%', height: '100%', minHeight: 0,
+              background: 'rgba(8,8,8,0.92)', backdropFilter: 'blur(24px)',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex', flexDirection: 'column',
             }}>
-              <div ref={overlayRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Drawer header with close */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+                <span style={{ fontSize: 12, color: '#636366', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Chat history</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={newSession} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 8, padding: '4px 12px', color: '#a3a3a3', fontSize: 12, cursor: 'pointer' }}>
+                    <Plus size={11} /> New
+                  </button>
+                  <button onClick={() => setShowChatOverlay(false)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 8, padding: '4px 12px', color: '#a3a3a3', fontSize: 12, cursor: 'pointer' }}>
+                    Hide
+                  </button>
+                </div>
+              </div>
+              {/* Drawer messages */}
+              <div ref={overlayRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px 90px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {messages.map((m, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                    <div style={{ maxWidth: 260, display: 'flex', flexDirection: 'column', gap: 5, alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                      <div style={{ padding: '9px 13px', borderRadius: 14, fontSize: 13, lineHeight: 1.55, ...bubbleStyle(m.role) }}>{m.content}</div>
+                    <div style={{ maxWidth: '70%', display: 'flex', flexDirection: 'column', gap: 5, alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                      <div style={{ padding: '10px 14px', borderRadius: 16, fontSize: 14, lineHeight: 1.6, ...bubbleStyle(m.role) }}>{m.content}</div>
                       {(m.emotions?.length > 0 || m.classification) && (
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           {m.emotions?.slice(0, 2).map((e, j) => (
@@ -393,7 +393,7 @@ export default function Chat({ user }) {
                 ))}
                 {loading && (
                   <div style={{ display: 'flex' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, borderBottomLeftRadius: 4, padding: '11px 14px', display: 'flex', gap: 5, alignItems: 'center' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, borderBottomLeftRadius: 4, padding: '11px 14px', display: 'flex', gap: 5, alignItems: 'center' }}>
                       {[0,1,2].map(i => <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: '#636366', display: 'block', animation: 'bounce 0.9s ease-in-out infinite', animationDelay: `${i*0.18}s` }} />)}
                     </div>
                   </div>
@@ -403,8 +403,12 @@ export default function Chat({ user }) {
           </div>
 
           {/* Floating input — bottom full width */}
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 24px 20px', background: 'linear-gradient(to top, rgba(0,0,0,0.95) 60%, transparent 100%)', zIndex: 60 }}>
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 24px 20px', background: 'linear-gradient(to top, rgba(0,0,0,0.98) 70%, transparent 100%)', zIndex: 60 }}>
             <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 14, padding: '10px 10px 10px 16px', backdropFilter: 'blur(20px)' }}>
+              <button onClick={() => setShowChatOverlay(v => !v)} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, background: showChatOverlay ? 'rgba(48,209,88,0.12)' : 'rgba(255,255,255,0.06)', border: showChatOverlay ? '1px solid rgba(48,209,88,0.25)' : '1px solid rgba(255,255,255,0.10)', color: showChatOverlay ? '#30d158' : '#8e8e93', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
+                {showChatOverlay ? <PanelRightClose size={11} /> : <PanelRightOpen size={11} />}
+                {showChatOverlay ? 'Hide' : 'Chat'}
+              </button>
               <input
                 ref={voiceInputRef}
                 value={input}
@@ -482,7 +486,7 @@ export default function Chat({ user }) {
           </div>
 
           {/* Messages */}
-          <div ref={messagesRef} style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div ref={messagesRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {messages.length === 0 && (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ textAlign: 'center' }}>

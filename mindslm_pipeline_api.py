@@ -37,8 +37,10 @@ OLLAMA_URL   = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 MODEL_NAME   = os.getenv("MODEL_NAME", "mindslm-14b")
 MODEL_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 API_PORT     = int(os.getenv("API_PORT", "8080"))
-GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-2.5-flash"
+USE_GEMINI   = os.getenv("USE_GEMINI", "false").lower() == "true"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_KEY   = GEMINI_API_KEY  # alias used by fallback function
+GEMINI_MODEL = "gemini-2.5-pro"
 
 # ==============================
 # STAGE 1: GoEmotions CLASSIFIER (primary)
@@ -228,19 +230,29 @@ def classify_message(text: str) -> dict:
 # ==============================
 SYSTEM_PROMPTS = {
     "Anxiety": (
-        "You are a therapist. EXACTLY 2 sentences. You MUST respond to the specific situation the user described.\n"
-        "Sentence 1: Name the EXACT trigger or situation they mentioned — use their words (person's name, event, place). NEVER say 'anxiety' or 'stress' generically.\n"
-        "Sentence 2: Give ONE action that applies DIRECTLY to their specific situation. BANNED: breathing exercises, 'take a breath', 'slow breaths', grounding exercises. Instead give something that addresses what they actually said.\n"
-        "Good (person conflict): 'Dealing with Rahul all morning when he won't stop is genuinely exhausting. Step away for 5 minutes — put headphones on, close a door, anything to create distance right now.'\n"
-        "Good (work pressure): 'That deadline sitting over everything makes it impossible to think clearly. Write down just the one thing that has to happen today and ignore the rest until it is done.'\n"
-        "Bad: 'That anxiety you are carrying is real. Try taking three slow breaths.' — this is too generic, never do this."
+        "You are a sharp, direct therapist. Max 3 sentences. Read the WHOLE message — do not fixate on one word.\n"
+        "Sentence 1: Name the real situation driving the anxiety — use their specific words (person, event, relationship). Never say 'anxiety' or 'stress' generically.\n"
+        "Sentence 2-3: Give ONE concrete thing they can actually do or think about that addresses the ROOT CAUSE of what they described — not the symptom. Match the advice to the situation:\n"
+        "  - Relationship/person conflict → boundary, distance, or a reframe about that person\n"
+        "  - Work/deadline → a specific prioritisation move\n"
+        "  - Uncertainty → name the fear directly and give one way to test it\n"
+        "BANNED: breathing exercises, 'take a breath', grounding, 'you are not alone', generic affirmations.\n"
+        "Good (conflict): 'Dealing with Rahul every morning is grinding you down. The next time he starts, say one sentence and walk away — you don't owe him a full conversation.'\n"
+        "Good (insomnia from ex): 'Lying awake replaying memories of your ex is your brain trying to resolve something that has no resolution. When a memory comes tonight, write down one specific reason the relationship was not working — not to feel better, but to give your brain something true to hold.'\n"
+        "Bad: 'That anxiety you are carrying is real. Try taking three slow breaths.'"
     ),
 
     "Depression": (
-        "You are a therapist. EXACTLY 2 sentences. DO NOT explain depression. DO NOT say 'it's common'. DO NOT use 'we'.\n"
-        "Sentence 1: Mirror back the SPECIFIC thing they said — use their exact words or situation. Not a general statement about depression.\n"
-        "Sentence 2: Give ONE tiny physical action tied to their specific situation that they can do in the next 30 seconds.\n"
-        "Good: 'Not being able to get out of bed even when you want to is one of the cruelest parts of this. Plant both feet on the floor right now — that is the whole task, nothing else.'\n"
+        "You are a sharp, direct therapist. Max 3 sentences. Read the WHOLE message before responding.\n"
+        "Sentence 1: Name the specific situation or loss they described — use their words. Not a generic depression statement.\n"
+        "Sentence 2-3: Give ONE concrete thought or action that actually addresses what they are dealing with. Match the advice to the root cause:\n"
+        "  - Heartbreak/ex → address the rumination or grief, not sleep hygiene\n"
+        "  - Loss of motivation → one tiny starting point specific to what they mentioned\n"
+        "  - Emptiness → name what might be missing and one way to move toward it\n"
+        "  - Can't get out of bed → one micro-action specific to their situation\n"
+        "BANNED: 'it is common', 'you are not alone', 'plant your feet on the floor' (unless specifically about getting out of bed), generic affirmations.\n"
+        "Good (heartbreak insomnia): 'Lying awake thinking about your ex every night is grief with nowhere to go. Tonight, before you sleep, write down one thing about the relationship that was genuinely bad — your brain needs something real to hold onto instead of the highlights reel.'\n"
+        "Good (can't get up): 'Not being able to get out of bed even when you want to is one of the cruelest parts of this. Sit up and put your feet on the floor — that is the whole task right now.'\n"
         "Bad: 'It is common to feel low. We are sorry you are feeling this way.'"
     ),
 
@@ -264,10 +276,23 @@ SYSTEM_PROMPTS = {
     ),
 
     "Normal": (
-        "You are a friend responding to exactly what they said. 1 sentence reply that references their specific situation + 1 follow-up question.\n"
-        "NEVER give advice. NEVER say 'I understand' or 'that sounds'. Just react naturally to what they said.\n"
-        "Good: 'Rahul sounds like a lot to deal with on a Monday morning — what did he do this time?'\n"
-        "Bad: 'I understand that can be frustrating. How are you feeling about it?'"
+        "You are a close friend. Your reply is EXACTLY 2 parts — no more, no less:\n"
+        "PART 1: One sentence using the user's EXACT words or specific details they mentioned. Not a paraphrase. Not generic.\n"
+        "PART 2: One direct follow-up question about the real emotion behind what they said.\n\n"
+        "FORMAT: '[Part 1 using their exact words] — [follow-up question]?'\n\n"
+        "RULES:\n"
+        "- NEVER say 'I understand', 'that sounds', 'you're really hard on yourself', or any generic opener.\n"
+        "- NEVER give advice or suggestions.\n"
+        "- If they call themselves 'fatso', 'fat', 'ugly', etc. — you can echo their self-label (e.g. 'fatso') but NEVER repeat explicit words they used to describe things (e.g. don't say 'fatass', say 'big meal' instead). Ask what's making them feel this way, NOT about the food or hunger.\n"
+        "- If friends betrayed them — NEVER say 'reach out to someone'. Name the betrayal.\n"
+        "- Always respond to the EMOTION, not the surface fact.\n\n"
+        "EXAMPLES:\n"
+        "Input: 'i just ate a big meal i am a fatso and i feel like i am getting too fat i am 99kgs'\n"
+        "Output: 'Calling yourself a fatso right after a big meal — has something happened lately that's making you feel worse about your body?'\n\n"
+        "Input: 'my friends betrayed me i dont feel like talking to anyone'\n"
+        "Output: 'Getting stabbed in the back by your own friends is a different kind of hurt — what did they do?'\n\n"
+        "Input: 'Rahul has been annoying me since the morning'\n"
+        "Output: 'Rahul sounds like a full-time job today — what did he do this time?'"
     ),
 }
 
@@ -309,67 +334,68 @@ def _build_prefill(user_message: str, category: str, emotions: list) -> str:
     if category == "Abuse":
         return "What happened to you is not okay — this is not your fault."
 
-    if category == "Normal":
+    if category in ("Normal", "Anxiety", "Depression"):
         return ""
 
-    # Extract key symptoms from user message to echo back
-    # All descriptions must work as noun phrases after "That ... you're carrying right now is real."
-    symptoms = []
-    keyword_map = {
-        "sleep": "sleeplessness",
-        "waking up": "waking in the night",
-        "cry": "need to cry",
-        "crying": "urge to cry",
-        "empty": "emptiness",
-        "hopeless": "hopelessness",
-        "lonely": "loneliness",
-        "anxious": "anxiety",
-        "anxiety": "anxiety",
-        "panic": "panic",
-        "heart racing": "racing heart",
-        "breathe": "trouble breathing",
-        "breath": "trouble breathing",
-        "chest": "chest tightness",
-        "tired": "exhaustion",
-        "motivation": "loss of motivation",
-        "bed": "exhaustion",
-        "worthless": "worthlessness",
-        "numb": "numbness",
-        "worry": "worry",
-        "overwhelm": "overwhelm",
-        "low": "heaviness",
-        "down": "low mood",
-        "sad": "sadness",
-        "depressed": "heaviness",
-        "dark": "dark thoughts",
-        "stuck": "stuck feeling",
-        "lost": "lost feeling",
-        "alone": "loneliness",
-        "stressed": "stress",
-        "stress": "stress",
-        "angry": "anger",
-        "anger": "anger",
-        "scared": "fear",
-        "fear": "fear",
-        "shame": "shame",
-        "guilt": "guilt",
-        "point": "hopelessness",
-        "disconnect": "disconnection",
-        "numb": "numbness",
-        "isolat": "isolation",
-        "drain": "exhaustion",
+    return ""
+
+def _call_gemini(messages: list, prefill: str) -> str:
+    """Call Gemini 2.5 Flash with the same message structure as Ollama."""
+    system_prompt = ""
+    gemini_contents = []
+
+    for m in messages:
+        role = m["role"]
+        content = m["content"]
+        if role == "system":
+            system_prompt = content
+        elif role == "user":
+            gemini_contents.append({"role": "user", "parts": [{"text": content}]})
+        elif role == "assistant":
+            gemini_contents.append({"role": "model", "parts": [{"text": content}]})
+
+    # Gemini requires conversation to end on a user turn
+    if not gemini_contents or gemini_contents[-1]["role"] != "user":
+        return ""
+
+    payload = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": gemini_contents,
+        "generationConfig": {
+            "temperature": 0.7,
+            "topP": 0.9,
+            "maxOutputTokens": 4096,
+            "thinkingConfig": {"thinkingBudget": 512},
+        },
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+        ]
     }
-    for keyword, description in keyword_map.items():
-        if keyword in msg:
-            symptoms.append(description)
 
-    if not symptoms:
-        # No specific keywords found — let the model generate its own specific opener
-        # rather than forcing a generic prefill that leads to generic responses
-        return ""
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+    resp = requests.post(url, json=payload, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    candidate = data["candidates"][0]
+    finish_reason = candidate.get("finishReason", "")
+    if finish_reason == "SAFETY" or "content" not in candidate:
+        raise ValueError(f"Gemini blocked: {finish_reason}")
+    parts = candidate["content"].get("parts", [])
+    if not parts:
+        raise ValueError(f"Gemini empty output (finishReason={finish_reason})")
+    text = parts[0].get("text", "").strip()
 
-    symptom_text = symptoms[0]
-    return f"That {symptom_text} you're carrying right now is real."
+    # Prepend prefill if model didn't start with it
+    if prefill and not text.startswith(prefill):
+        text = prefill + " " + text
+    return text
+
 
 
 def _generate_via_gemini(messages: list, category: str, prefill: str) -> str:
@@ -493,13 +519,15 @@ def generate_response(user_message: str, category: str, history: list,
     }
 
     try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=90)
-        resp.raise_for_status()
-        raw_json = resp.json()
-        # If Ollama returns an error field (e.g. model not found), fall through to Gemini
-        if raw_json.get("error"):
-            raise requests.exceptions.ConnectionError(raw_json["error"])
-        response_text = raw_json.get("message", {}).get("content", "").strip()
+        if USE_GEMINI:
+            response_text = _call_gemini(messages, prefill)
+        else:
+            resp = requests.post(OLLAMA_URL, json=payload, timeout=90)
+            resp.raise_for_status()
+            raw_json = resp.json()
+            if raw_json.get("error"):
+                raise requests.exceptions.ConnectionError(raw_json["error"])
+            response_text = raw_json.get("message", {}).get("content", "").strip()
 
         # Prepend the prefill so the full response reads naturally
         if prefill and not response_text.startswith(prefill):
@@ -514,7 +542,7 @@ def generate_response(user_message: str, category: str, history: list,
         # Strip AI-ish openers the model keeps generating despite prompts
         ai_openers = [
             r"^I'?m (?:sorry|truly sorry|really sorry) to hear[.,!]?\s*(?:that[.,!]?\s*)?",
-            r"^(?:It|That) sounds\b[^.!?]*[.!?]\s*",
+            r"^(?:It|That) sounds\b[^.!?]*[.!?]?\s*",
             r"^I understand (?:how |that |what )?",
             r"^Thank you for (?:sharing|reaching out|opening up)[.,!]?\s*",
             r"^I appreciate you (?:sharing|opening up|reaching out)[.,!]?\s*",
@@ -524,10 +552,12 @@ def generate_response(user_message: str, category: str, history: list,
             r"^It'?s (?:completely |totally |perfectly )?(?:normal|okay|natural|valid|understandable)\b[.,!]?\s*(?:to feel |that )?",
             r"^(?:I )?hear you[.,!]?\s*",
             r"^What you'?r?e? (?:feeling|experiencing|going through) is\s",
-            r"^I'?m (?:so |really )?(?:glad|happy|pleased)\b[^.!?]*[.!?]\s*",
-            r"^I'?m (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]\s*",
-            r"^We(?:'?re| are) (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]\s*",
-            r"^We(?:'?re| are) here (?:to help|for you)\b[^.!?]*[.!?]\s*",
+            r"^I'?m (?:so |really )?(?:glad|happy|pleased)\b[^.!?]*[.!?]?\s*",
+            r"^I'?m (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]?\s*",
+            r"^We(?:'?re| are) (?:sorry|truly sorry|really sorry)\b[^.!?]*[.!?]?\s*",
+            r"^We(?:'?re| are) here (?:to help|for you)\b[^.!?]*[.!?]?\s*",
+            r"^You'?r?e? (?:really |so |being )?hard on yourself\b[^.!?]*[.!?]?\s*",
+            r"^It'?s (?:really |so )?(?:tough|hard|difficult)\b[^.!?]*[.!?]?\s*",
         ]
         for pattern in ai_openers:
             new_text = re.sub(pattern, "", response_text, count=1, flags=re.IGNORECASE)
@@ -591,6 +621,12 @@ def generate_response(user_message: str, category: str, history: list,
             "remember the good", "think positive", "stay positive",
             "it gets better", "everything will be okay",
             "things will improve", "tomorrow is another day",
+            "reach out to someone", "reach out to a friend", "reach out to a loved",
+            "lean on someone", "lean on a friend", "lean on others",
+            "talk to someone you trust", "talk to a friend", "talk to a loved one",
+            "someone you trust", "trusted person", "trusted friend",
+            "surround yourself", "spend time with", "connect with others",
+            "social support", "support system", "loved ones",
         ]
         sentences_clean = re.split(r'(?<=[.!?])\s*', response_text)
         sentences_clean = [s for s in sentences_clean if s.strip() and not any(b in s.lower() for b in BANNED)]
@@ -642,7 +678,9 @@ def chat():
     """Full pipeline: Emotions → Classify → Screen → Generate → Safety"""
     data = request.get_json(silent=True) or {}
     user_message = data.get("message", "").strip()
-    session_id   = data.get("session_id", "default")
+    # Coerce null/empty session_id to a default — `.get(..., "default")` only
+    # applies when the key is absent, not when it's present and None.
+    session_id   = data.get("session_id") or "default"
 
     if not user_message:
         return jsonify({"error": "Empty message"}), 400
